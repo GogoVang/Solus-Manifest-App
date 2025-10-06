@@ -37,13 +37,14 @@ namespace SolusManifestApp.Tools.DepotDumper
         {
             var tcs = new TaskCompletionSource<string>();
 
-            await Application.Current.Dispatcher.InvokeAsync(() =>
+            Application.Current.Dispatcher.Invoke(() =>
             {
                 try
                 {
                     var dialog = new TwoFactorDialog(prompt)
                     {
-                        Owner = Application.Current.MainWindow
+                        Owner = Application.Current.MainWindow,
+                        Topmost = true
                     };
 
                     var result = dialog.ShowDialog();

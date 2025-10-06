@@ -167,6 +167,16 @@
                                 Margin="0,0,15,0"
                                 FontSize="14"
                                 FontWeight="SemiBold"/>
+                        <Button x:Name="BackButton"
+                                Content="← BACK TO LOGIN"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Click="DoneButton_Click"
+                                Width="180"
+                                Height="45"
+                                Visibility="Collapsed"
+                                Margin="0,0,15,0"
+                                FontSize="14"
+                                FontWeight="SemiBold"/>
                         <Button x:Name="UploadButton"
                                 Content="📤 UPLOAD TO SERVER"
                                 Click="UploadButton_Click"

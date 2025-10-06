@@ -89,6 +89,7 @@ namespace SolusManifestApp.Tools.DepotDumper
             cancellationTokenSource?.Cancel();
             steam3?.Disconnect(false); // Disconnect from Steam to abort QR code login
             AppendLog("Cancellation requested...");
+            UpdateStatus("Cancelled by user");
             CancelButton.IsEnabled = false;
         }
 
@@ -109,6 +110,7 @@ namespace SolusManifestApp.Tools.DepotDumper
             ProgressText.Text = "";
             LogTextBlock.Text = string.Empty;
             CancelButton.Visibility = Visibility.Visible;
+            BackButton.Visibility = Visibility.Collapsed;
             DoneButton.Visibility = Visibility.Collapsed;
             UploadButton.Visibility = Visibility.Collapsed;
             CancelButton.IsEnabled = true;
@@ -274,6 +276,7 @@ namespace SolusManifestApp.Tools.DepotDumper
 
             cancellationTokenSource = new CancellationTokenSource();
 
+            bool wasCancelled = false;
             try
             {
                 await RunDumper(username, password, config);
@@ -281,6 +284,7 @@ namespace SolusManifestApp.Tools.DepotDumper
             catch (OperationCanceledException)
             {
                 AppendLog("Operation cancelled by user.");
+                wasCancelled = true;
             }
             catch (Exception ex)
             {
@@ -297,13 +301,22 @@ namespace SolusManifestApp.Tools.DepotDumper
                 {
                     CancelButton.Visibility = Visibility.Collapsed;
 
-                    // Show upload button if files were generated
-                    if (generatedFiles.Count > 0)
+                    if (wasCancelled)
                     {
-                        UploadButton.Visibility = Visibility.Visible;
+                        // Show back button when cancelled
+                        BackButton.Visibility = Visibility.Visible;
+                    }
+                    else
+                    {
+                        // Show upload button if files were generated
+                        if (generatedFiles.Count > 0)
+                        {
+                            UploadButton.Visibility = Visibility.Visible;
+                        }
+
+                        DoneButton.Visibility = Visibility.Visible;
                     }
 
-                    DoneButton.Visibility = Visibility.Visible;
                     isDumping = false;
                 });
             }
@@ -662,7 +675,7 @@ namespace SolusManifestApp.Tools.DepotDumper
 
         private void UpdateProgress(int current, int total)
         {
-            Dispatcher.InvokeAsync(() =>
+            Dispatcher.Invoke(() =>
             {
                 ProgressBar.Value = (double)current / total * 100;
                 ProgressText.Text = $"{current} / {total}";

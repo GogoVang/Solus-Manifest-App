@@ -61,7 +61,7 @@
                         Click="CancelButton_Click"
                         Margin="0,0,10,0"/>
                 <Button Content="Submit"
-                        Style="{StaticResource PrimaryButtonStyle}"
+                        Style="{StaticResource ModernButtonStyle}"
                         Width="100"
                         Height="40"
                         Click="SubmitButton_Click"/>
