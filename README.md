@@ -4,8 +4,8 @@
 
 **A comprehensive Steam depot management and game downgrading tool**
 
-[![Build](https://github.com/yourusername/solus-manifest-app/workflows/Build/badge.svg)](https://github.com/yourusername/solus-manifest-app/actions)
-[![Release](https://github.com/yourusername/solus-manifest-app/workflows/Build%20and%20Release/badge.svg)](https://github.com/yourusername/solus-manifest-app/releases)
+[![Build](https://github.com/MorrenusGames/Solus-Manifest-App/workflows/Build/badge.svg)](https://github.com/MorrenusGames/Solus-Manifest-App/actions)
+[![Release](https://github.com/MorrenusGames/Solus-Manifest-App/workflows/Build%20and%20Release/badge.svg)](https://github.com/MorrenusGames/Solus-Manifest-App/releases)
 
 [At a Glance](#-at-a-glance) • [Features](#-key-features) • [Installation](#-installation) • [Usage](#-usage) • [Tools](#-integrated-tools) • [Support](#-support)
 
@@ -137,13 +137,13 @@ Solus Manifest App is a powerful Windows desktop application for managing Steam 
 ### Option 1: Download Release (Recommended)
 
 **For Stable Releases:**
-1. Go to [Releases](https://github.com/yourusername/solus-manifest-app/releases)
+1. Go to [Releases](https://github.com/MorrenusGames/Solus-Manifest-App/releases)
 2. Download a versioned release: `SolusManifestApp-v1.0.0-win-x64.zip`
 3. Extract to a folder
 4. Run `SolusManifestApp.exe`
 
 **For Latest Development Build:**
-1. Go to [Releases](https://github.com/yourusername/solus-manifest-app/releases)
+1. Go to [Releases](https://github.com/MorrenusGames/Solus-Manifest-App/releases)
 2. Find the "Latest Build (Development)" pre-release
 3. Download `SolusManifestApp-latest-win-x64.zip`
 4. Extract and run `SolusManifestApp.exe`
@@ -162,8 +162,8 @@ Solus Manifest App is a powerful Windows desktop application for managing Steam 
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/solus-manifest-app.git
-cd solus-manifest-app
+git clone https://github.com/MorrenusGames/Solus-Manifest-App.git
+cd Solus-Manifest-App
 
 # Restore dependencies
 dotnet restore
@@ -620,7 +620,7 @@ See [.github/workflows/README.md](.github/workflows/README.md) for details.
 
 - **Discord**: [Join Server](https://discord.gg/morrenusgames)
 - **Website**: [manifest.morrenus.xyz](https://manifest.morrenus.xyz)
-- **GitHub**: [Report Issues](https://github.com/yourusername/solus-manifest-app/issues)
+- **GitHub**: [Report Issues](https://github.com/MorrenusGames/Solus-Manifest-App/issues)
 
 ## 📜 License
 
