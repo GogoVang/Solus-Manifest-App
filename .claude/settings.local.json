@@ -40,7 +40,9 @@
       "Bash(else echo \"Directory does not exist\")",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(./SolusManifestApp.exe)",
+      "Bash(start SolusManifestApp.exe)"
     ],
     "deny": [],
     "ask": []
