@@ -263,6 +263,7 @@
                             </StackPanel>
                         </Border>
 
+
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -425,6 +426,223 @@
                                            Foreground="{DynamicResource TextSecondaryBrush}"
                                            FontSize="12"
                                            FontStyle="Italic"/>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- Maintenance Tab -->
+            <TabItem Header="Maintenance">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel MaxWidth="800" HorizontalAlignment="Left" Margin="0,20,0,0">
+
+                        <!-- Cache Management -->
+                        <Border Style="{StaticResource ModernCardStyle}" Margin="0,0,0,20">
+                            <StackPanel>
+                                <TextBlock Text="Cache Management"
+                                           FontSize="20"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           Margin="0,0,0,15"/>
+
+                                <TextBlock Text="{Binding GetCacheSizeFormatted(), StringFormat='Current cache size: {0}'}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,0,0,10"/>
+
+                                <Button Content="Clear Cache"
+                                        Command="{Binding ClearCacheCommand}"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Padding="20,10"
+                                        HorizontalAlignment="Left"/>
+
+                                <TextBlock Text="Clears all cached game icons and API data"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="12"
+                                           FontStyle="Italic"
+                                           Margin="0,10,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Logs Management -->
+                        <Border Style="{StaticResource ModernCardStyle}" Margin="0,0,0,20">
+                            <StackPanel>
+                                <TextBlock Text="Logs Management"
+                                           FontSize="20"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           Margin="0,0,0,15"/>
+
+                                <Button Content="Clear Old Logs"
+                                        Command="{Binding ClearLogsCommand}"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Padding="20,10"
+                                        HorizontalAlignment="Left"
+                                        Margin="0,0,0,10"/>
+
+                                <TextBlock Text="Deletes all old log files (except current session)"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="12"
+                                           FontStyle="Italic"/>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- SteamAuth Pro Tab -->
+            <TabItem Header="SteamAuth Pro">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel MaxWidth="800" HorizontalAlignment="Left" Margin="0,20,0,0">
+
+                        <!-- Accounts Section -->
+                        <Border Style="{StaticResource ModernCardStyle}" Margin="0,0,0,20">
+                            <StackPanel>
+                                <TextBlock Text="Steam Accounts"
+                                           FontSize="20"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           Margin="0,0,0,15"/>
+
+                                <TextBlock Text="Manage Steam accounts for authentication"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,0,0,10"/>
+
+                                <ListBox ItemsSource="{Binding SteamAuthProAccounts}"
+                                         SelectedIndex="{Binding SteamAuthProActiveAccountIndex}"
+                                         MaxHeight="150"
+                                         Margin="0,0,0,10"
+                                         Background="{DynamicResource SteamMediumBrush}"
+                                         Foreground="{DynamicResource TextPrimaryBrush}"
+                                         BorderBrush="{DynamicResource BorderBrush}">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                                    <Button Content="Auto-Detect Accounts"
+                                            Command="{Binding SteamAuthProAutoDetectCommand}"
+                                            Style="{StaticResource SecondaryButtonStyle}"
+                                            Padding="15,8"
+                                            Margin="0,0,10,0"/>
+                                    <Button Content="Add Account"
+                                            Command="{Binding SteamAuthProAddAccountCommand}"
+                                            Style="{StaticResource SecondaryButtonStyle}"
+                                            Padding="15,8"
+                                            Margin="0,0,10,0"/>
+                                    <Button Content="Remove Selected"
+                                            Command="{Binding SteamAuthProRemoveAccountCommand}"
+                                            Style="{StaticResource SecondaryButtonStyle}"
+                                            Padding="15,8"
+                                            Margin="0,0,10,0"/>
+                                    <Button Content="Set as Active"
+                                            Command="{Binding SteamAuthProSetActiveCommand}"
+                                            Style="{StaticResource SecondaryButtonStyle}"
+                                            Padding="15,8"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- API Configuration Section -->
+                        <Border Style="{StaticResource ModernCardStyle}" Margin="0,0,0,20">
+                            <StackPanel>
+                                <TextBlock Text="API Configuration"
+                                           FontSize="20"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           Margin="0,0,0,15"/>
+
+                                <TextBlock Text="API URL"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,0,0,5"/>
+                                <TextBox Text="{Binding SteamAuthProApiUrl, UpdateSourceTrigger=PropertyChanged}"
+                                         Margin="0,0,0,15"/>
+
+                                <TextBlock Text="PHPSESSID"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,0,0,5"/>
+                                <TextBox Text="{Binding SteamAuthProPhpSessionId, UpdateSourceTrigger=PropertyChanged}"
+                                         Margin="0,0,0,10"/>
+
+                                <TextBlock TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="12"
+                                           FontStyle="Italic">
+                                    To get PHPSESSID:<LineBreak/>
+                                    1. Open browser DevTools (F12)<LineBreak/>
+                                    2. Go to https://drm.steam.run<LineBreak/>
+                                    3. Check Application → Cookies → PHPSESSID
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- Config VDF Extractor Tab -->
+            <TabItem Header="Config VDF Extractor">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel MaxWidth="800" HorizontalAlignment="Left" Margin="0,20,0,0">
+
+                        <!-- File Paths Section -->
+                        <Border Style="{StaticResource ModernCardStyle}" Margin="0,0,0,20">
+                            <StackPanel>
+                                <TextBlock Text="File Paths"
+                                           FontSize="20"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           Margin="0,0,0,15"/>
+
+                                <TextBlock Text="Config.vdf File Path"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,0,0,5"/>
+                                <Grid Margin="0,0,0,15">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Text="{Binding ConfigVdfPath, UpdateSourceTrigger=PropertyChanged}"
+                                             Grid.Column="0"
+                                             Margin="0,0,10,0"/>
+                                    <Button Content="Browse..."
+                                            Grid.Column="1"
+                                            Command="{Binding BrowseConfigVdfCommand}"
+                                            Style="{StaticResource SecondaryButtonStyle}"
+                                            Padding="15,8"/>
+                                </Grid>
+
+                                <TextBlock Text="Combinedkeys.key File Path"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,0,0,5"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Text="{Binding CombinedKeysPath, UpdateSourceTrigger=PropertyChanged}"
+                                             Grid.Column="0"
+                                             Margin="0,0,10,0"/>
+                                    <Button Content="Browse..."
+                                            Grid.Column="1"
+                                            Command="{Binding BrowseCombinedKeysCommand}"
+                                            Style="{StaticResource SecondaryButtonStyle}"
+                                            Padding="15,8"/>
+                                </Grid>
+
+                                <TextBlock TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="12"
+                                           FontStyle="Italic"
+                                           Margin="0,10,0,0">
+                                    These paths are used for extracting depot keys from your Steam config.vdf file.<LineBreak/>
+                                    The combinedkeys.key file is optional and used to filter out already-known keys.
+                                </TextBlock>
                             </StackPanel>
                         </Border>
 

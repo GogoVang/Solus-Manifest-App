@@ -39,7 +39,7 @@ namespace SolusManifestApp.Services
             return tokenAppIds;
         }
 
-        public List<LuaDepotInfo> ParseDepotsFromLua(string luaContent)
+        public List<LuaDepotInfo> ParseDepotsFromLua(string luaContent, string? mainAppId = null)
         {
             var depots = new List<LuaDepotInfo>();
             var lines = luaContent.Split('\n');
@@ -132,9 +132,14 @@ namespace SolusManifestApp.Services
             }
 
             // Add depots to list (prefer ones with manifests, but also include DLCs without manifests)
+            // Filter out the main AppID if provided
             foreach (var kvp in depotMap)
             {
-                depots.Add(kvp.Value);
+                // Don't include the main AppID in the depot list
+                if (mainAppId == null || kvp.Key != mainAppId)
+                {
+                    depots.Add(kvp.Value);
+                }
             }
 
             return depots;

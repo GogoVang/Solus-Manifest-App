@@ -3,6 +3,7 @@ using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 
@@ -28,8 +29,9 @@ namespace SolusManifestApp.Services
 
             _httpClient = new HttpClient
             {
-                Timeout = TimeSpan.FromSeconds(10)
+                Timeout = TimeSpan.FromSeconds(30)
             };
+            _httpClient.DefaultRequestHeaders.Add("User-Agent", "SolusManifestApp/1.0");
 
             _logger = logger;
         }
@@ -37,7 +39,7 @@ namespace SolusManifestApp.Services
         // Icon Caching
         public async Task<string?> GetIconAsync(string appId, string iconUrl)
         {
-            if (string.IsNullOrEmpty(iconUrl))
+            if (string.IsNullOrEmpty(appId))
                 return null;
 
             var iconPath = Path.Combine(_iconCacheFolder, $"{appId}.jpg");
@@ -48,22 +50,147 @@ namespace SolusManifestApp.Services
                 return iconPath;
             }
 
-            // Download icon
-            try
+            // 1. Try downloading from the provided URL first (from manifest API)
+            if (!string.IsNullOrEmpty(iconUrl))
             {
-                var response = await _httpClient.GetAsync(iconUrl);
-                if (response.IsSuccessStatusCode)
+                try
                 {
-                    var bytes = await response.Content.ReadAsByteArrayAsync();
-                    await File.WriteAllBytesAsync(iconPath, bytes);
-                    return iconPath;
+                    _logger?.Debug($"[1/4] Downloading icon for {appId} from provided URL: {iconUrl}");
+                    var response = await _httpClient.GetAsync(iconUrl);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var bytes = await response.Content.ReadAsByteArrayAsync();
+                        if (bytes.Length > 0)
+                        {
+                            await File.WriteAllBytesAsync(iconPath, bytes);
+                            _logger?.Info($"✓ Downloaded icon for {appId} from provided URL ({bytes.Length} bytes)");
+                            ManageIconCacheSize();
+                            return iconPath;
+                        }
+                    }
+                    _logger?.Debug($"✗ Provided URL failed: Status {response.StatusCode}");
+                }
+                catch (Exception ex)
+                {
+                    _logger?.Debug($"✗ Provided URL exception: {ex.Message}");
                 }
             }
-            catch
+
+            // 2. Fallback to SteamCMD API
+            _logger?.Debug($"[2/4] Trying SteamCMD API for {appId}");
+            try
             {
-                // Return null if download fails
+                var steamCmdUrl = $"https://api.steamcmd.net/v1/info/{appId}";
+                var response = await _httpClient.GetAsync(steamCmdUrl);
+                if (response.IsSuccessStatusCode)
+                {
+                    var json = await response.Content.ReadAsStringAsync();
+                    dynamic? data = JsonConvert.DeserializeObject<dynamic>(json);
+
+                    if (data != null && data["data"] != null && data["data"]["header_image"] != null)
+                    {
+                        string headerImagePath = data["data"]["header_image"].ToString();
+                        if (!string.IsNullOrEmpty(headerImagePath))
+                        {
+                            var imageUrl = $"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{appId}/{headerImagePath}";
+                            _logger?.Debug($"Found header_image from SteamCMD: {imageUrl}");
+
+                            var imageResponse = await _httpClient.GetAsync(imageUrl);
+                            if (imageResponse.IsSuccessStatusCode)
+                            {
+                                var bytes = await imageResponse.Content.ReadAsByteArrayAsync();
+                                if (bytes.Length > 0)
+                                {
+                                    await File.WriteAllBytesAsync(iconPath, bytes);
+                                    _logger?.Info($"✓ Downloaded icon for {appId} from SteamCMD API ({bytes.Length} bytes)");
+                                    ManageIconCacheSize();
+                                    return iconPath;
+                                }
+                            }
+                        }
+                    }
+                }
+                _logger?.Debug($"✗ SteamCMD API failed for {appId}");
+            }
+            catch (Exception ex)
+            {
+                _logger?.Debug($"✗ SteamCMD API exception: {ex.Message}");
             }
 
+            // 3. Fallback to Steam Store API
+            _logger?.Debug($"[3/4] Trying Steam Store API for {appId}");
+            try
+            {
+                var storeApiUrl = $"https://store.steampowered.com/api/appdetails?appids={appId}";
+                var storeResponse = await _httpClient.GetAsync(storeApiUrl);
+                if (storeResponse.IsSuccessStatusCode)
+                {
+                    var json = await storeResponse.Content.ReadAsStringAsync();
+                    dynamic? data = JsonConvert.DeserializeObject<dynamic>(json);
+
+                    if (data != null && data[appId] != null && data[appId]["success"] == true)
+                    {
+                        var gameData = data[appId]["data"];
+                        string? imageUrl = gameData["header_image"]?.ToString();
+
+                        if (!string.IsNullOrEmpty(imageUrl))
+                        {
+                            _logger?.Debug($"Found header_image from Steam Store API: {imageUrl}");
+
+                            var imageResponse = await _httpClient.GetAsync(imageUrl);
+                            if (imageResponse.IsSuccessStatusCode)
+                            {
+                                var bytes = await imageResponse.Content.ReadAsByteArrayAsync();
+                                if (bytes.Length > 0)
+                                {
+                                    await File.WriteAllBytesAsync(iconPath, bytes);
+                                    _logger?.Info($"✓ Downloaded icon for {appId} from Steam Store API ({bytes.Length} bytes)");
+                                    ManageIconCacheSize();
+                                    return iconPath;
+                                }
+                            }
+                        }
+                    }
+                }
+                _logger?.Debug($"✗ Steam Store API failed for {appId}");
+            }
+            catch (Exception ex)
+            {
+                _logger?.Debug($"✗ Steam Store API exception: {ex.Message}");
+            }
+
+            // 4. Last resort: Direct CDN URLs
+            _logger?.Debug($"[4/4] Trying direct CDN URLs for {appId}");
+            var fallbackUrls = new[]
+            {
+                $"https://cdn.cloudflare.steamstatic.com/steam/apps/{appId}/header.jpg",
+                $"https://cdn.akamai.steamstatic.com/steam/apps/{appId}/header.jpg"
+            };
+
+            foreach (var url in fallbackUrls)
+            {
+                try
+                {
+                    var response = await _httpClient.GetAsync(url);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var bytes = await response.Content.ReadAsByteArrayAsync();
+                        if (bytes.Length > 0)
+                        {
+                            await File.WriteAllBytesAsync(iconPath, bytes);
+                            _logger?.Info($"✓ Downloaded icon for {appId} from direct CDN: {url} ({bytes.Length} bytes)");
+                            ManageIconCacheSize();
+                            return iconPath;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger?.Debug($"✗ Direct CDN failed for {url}: {ex.Message}");
+                }
+            }
+
+            _logger?.Warning($"✗✗✗ All 4 fallback methods failed for {appId}");
             return null;
         }
 
@@ -94,6 +221,7 @@ namespace SolusManifestApp.Services
                 try
                 {
                     File.Copy(localSteamIconPath, cachedPath, overwrite: true);
+                    ManageIconCacheSize();
                     return cachedPath;
                 }
                 catch
@@ -122,6 +250,7 @@ namespace SolusManifestApp.Services
                         var bytes = await response.Content.ReadAsByteArrayAsync();
                         await File.WriteAllBytesAsync(cachedPath, bytes);
                         _logger?.Info($"✓ Success! Downloaded {bytes.Length} bytes from {url}");
+                        ManageIconCacheSize();
                         return cachedPath;
                     }
                     else
@@ -164,6 +293,7 @@ namespace SolusManifestApp.Services
                                 var bytes = await imageResponse.Content.ReadAsByteArrayAsync();
                                 await File.WriteAllBytesAsync(cachedPath, bytes);
                                 _logger?.Info($"✓ Success! Downloaded {bytes.Length} bytes from Steam Store API");
+                                ManageIconCacheSize();
                                 return cachedPath;
                             }
                         }
@@ -189,6 +319,68 @@ namespace SolusManifestApp.Services
                 }
             }
             catch { }
+        }
+
+        private void ManageIconCacheSize()
+        {
+            try
+            {
+                const long maxCacheSizeBytes = 200 * 1024 * 1024; // 200 MB
+                const long targetSizeBytes = 180 * 1024 * 1024;   // 180 MB (buffer)
+
+                var iconFiles = new DirectoryInfo(_iconCacheFolder).GetFiles("*.jpg");
+
+                // Calculate total cache size
+                long totalSize = 0;
+                foreach (var file in iconFiles)
+                {
+                    totalSize += file.Length;
+                }
+
+                _logger?.Debug($"Icon cache size: {totalSize / 1024 / 1024} MB ({iconFiles.Length} files)");
+
+                // If cache is under limit, no action needed
+                if (totalSize <= maxCacheSizeBytes)
+                {
+                    return;
+                }
+
+                _logger?.Info($"Icon cache exceeded 200MB ({totalSize / 1024 / 1024} MB). Cleaning up oldest files...");
+
+                // Sort files by last access time (oldest first)
+                var sortedFiles = iconFiles.OrderBy(f => f.LastAccessTime).ToArray();
+
+                // Delete oldest files until we're under target size
+                long currentSize = totalSize;
+                int deletedCount = 0;
+
+                foreach (var file in sortedFiles)
+                {
+                    if (currentSize <= targetSizeBytes)
+                    {
+                        break;
+                    }
+
+                    try
+                    {
+                        var fileSize = file.Length;
+                        file.Delete();
+                        currentSize -= fileSize;
+                        deletedCount++;
+                        _logger?.Debug($"Deleted old cache file: {file.Name} ({fileSize / 1024} KB)");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.Warning($"Failed to delete cache file {file.Name}: {ex.Message}");
+                    }
+                }
+
+                _logger?.Info($"Cache cleanup complete. Deleted {deletedCount} files. New size: {currentSize / 1024 / 1024} MB");
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error($"Error managing icon cache size: {ex.Message}");
+            }
         }
 
         // Data Caching for Offline Mode
@@ -267,8 +459,10 @@ namespace SolusManifestApp.Services
 
         public void ClearAllCache()
         {
+            _logger?.Info("Clearing all cache");
             ClearIconCache();
             ClearDataCache();
+            _logger?.Info("Cache cleared successfully");
         }
 
         public long GetCacheSize()

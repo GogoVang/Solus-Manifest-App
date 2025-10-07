@@ -2,8 +2,11 @@ using SolusManifestApp.Helpers;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SolusManifestApp.Services;
+using SolusManifestApp.Views;
 using System;
+using System.Collections.Generic;
 using System.Windows;
+using System.Windows.Controls;
 
 namespace SolusManifestApp.ViewModels
 {
@@ -13,6 +16,7 @@ namespace SolusManifestApp.ViewModels
         private readonly SettingsService _settingsService;
         private readonly UpdateService _updateService;
         private readonly NotificationService _notificationService;
+        private readonly Dictionary<string, UserControl> _cachedViews = new Dictionary<string, UserControl>();
 
         [ObservableProperty]
         private object? _currentPage;
@@ -27,6 +31,7 @@ namespace SolusManifestApp.ViewModels
         public DownloadsViewModel DownloadsViewModel { get; }
         public ToolsViewModel ToolsViewModel { get; }
         public SettingsViewModel SettingsViewModel { get; }
+        public SupportViewModel SupportViewModel { get; }
 
         public MainViewModel(
             SteamService steamService,
@@ -39,7 +44,8 @@ namespace SolusManifestApp.ViewModels
             StoreViewModel storeViewModel,
             DownloadsViewModel downloadsViewModel,
             ToolsViewModel toolsViewModel,
-            SettingsViewModel settingsViewModel)
+            SettingsViewModel settingsViewModel,
+            SupportViewModel supportViewModel)
         {
             _steamService = steamService;
             _settingsService = settingsService;
@@ -53,17 +59,27 @@ namespace SolusManifestApp.ViewModels
             DownloadsViewModel = downloadsViewModel;
             ToolsViewModel = toolsViewModel;
             SettingsViewModel = settingsViewModel;
+            SupportViewModel = supportViewModel;
 
             // Start at Home page
-            CurrentPage = HomeViewModel;
+            CurrentPage = GetOrCreateView("Home", () => new HomePage { DataContext = HomeViewModel });
             CurrentPageName = "Home";
             HomeViewModel.RefreshMode();
+        }
+
+        private UserControl GetOrCreateView(string key, Func<UserControl> createView)
+        {
+            if (!_cachedViews.ContainsKey(key))
+            {
+                _cachedViews[key] = createView();
+            }
+            return _cachedViews[key];
         }
 
         private bool CanNavigateAway()
         {
             // Check if we're currently on settings page and have unsaved changes
-            if (CurrentPage == SettingsViewModel && SettingsViewModel.HasUnsavedChanges)
+            if (CurrentPageName == "Settings" && SettingsViewModel.HasUnsavedChanges)
             {
                 var result = MessageBoxHelper.Show(
                     "You have unsaved changes. Do you want to leave without saving?",
@@ -81,7 +97,7 @@ namespace SolusManifestApp.ViewModels
         {
             if (!CanNavigateAway()) return;
 
-            CurrentPage = HomeViewModel;
+            CurrentPage = GetOrCreateView("Home", () => new HomePage { DataContext = HomeViewModel });
             CurrentPageName = "Home";
             HomeViewModel.RefreshMode();
         }
@@ -91,7 +107,7 @@ namespace SolusManifestApp.ViewModels
         {
             if (!CanNavigateAway()) return;
 
-            CurrentPage = LuaInstallerViewModel;
+            CurrentPage = GetOrCreateView("Installer", () => new LuaInstallerPage { DataContext = LuaInstallerViewModel });
             CurrentPageName = "Installer";
             LuaInstallerViewModel.RefreshMode();
         }
@@ -101,7 +117,7 @@ namespace SolusManifestApp.ViewModels
         {
             if (!CanNavigateAway()) return;
 
-            CurrentPage = LibraryViewModel;
+            CurrentPage = GetOrCreateView("Library", () => new LibraryPage { DataContext = LibraryViewModel });
             CurrentPageName = "Library";
             LibraryViewModel.RefreshLibrary();
         }
@@ -111,7 +127,7 @@ namespace SolusManifestApp.ViewModels
         {
             if (!CanNavigateAway()) return;
 
-            CurrentPage = StoreViewModel;
+            CurrentPage = GetOrCreateView("Store", () => new StorePage { DataContext = StoreViewModel });
             CurrentPageName = "Store";
         }
 
@@ -120,7 +136,7 @@ namespace SolusManifestApp.ViewModels
         {
             if (!CanNavigateAway()) return;
 
-            CurrentPage = DownloadsViewModel;
+            CurrentPage = GetOrCreateView("Downloads", () => new DownloadsPage { DataContext = DownloadsViewModel });
             CurrentPageName = "Downloads";
         }
 
@@ -129,7 +145,7 @@ namespace SolusManifestApp.ViewModels
         {
             if (!CanNavigateAway()) return;
 
-            CurrentPage = ToolsViewModel;
+            CurrentPage = GetOrCreateView("Tools", () => new ToolsPage { DataContext = ToolsViewModel });
             CurrentPageName = "Tools";
         }
 
@@ -138,8 +154,17 @@ namespace SolusManifestApp.ViewModels
         {
             if (!CanNavigateAway()) return;
 
-            CurrentPage = SettingsViewModel;
+            CurrentPage = GetOrCreateView("Settings", () => new SettingsPage { DataContext = SettingsViewModel });
             CurrentPageName = "Settings";
+        }
+
+        [RelayCommand]
+        private void NavigateToSupport()
+        {
+            if (!CanNavigateAway()) return;
+
+            CurrentPage = GetOrCreateView("Support", () => new SupportPage { DataContext = SupportViewModel });
+            CurrentPageName = "Support";
         }
 
         [RelayCommand]

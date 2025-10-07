@@ -3,6 +3,8 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
+using Newtonsoft.Json;
+using SolusManifestApp.Models;
 using SolusManifestApp.Services;
 
 namespace SolusManifestApp.Tools.ConfigVdfKeyExtractor
@@ -17,6 +19,11 @@ namespace SolusManifestApp.Tools.ConfigVdfKeyExtractor
             _settingsService = new SettingsService();
 
             // Load saved paths from settings
+            LoadSavedPaths();
+        }
+
+        public void LoadSavedPaths()
+        {
             var settings = _settingsService.LoadSettings();
             TxtFilePath.Text = settings.ConfigVdfPath ?? string.Empty;
             TxtCombinedKeysPath.Text = settings.CombinedKeysPath ?? string.Empty;
@@ -39,11 +46,6 @@ namespace SolusManifestApp.Tools.ConfigVdfKeyExtractor
             if (openFileDialog.ShowDialog() == true)
             {
                 TxtFilePath.Text = openFileDialog.FileName;
-
-                // Save to settings
-                var settings = _settingsService.LoadSettings();
-                settings.ConfigVdfPath = openFileDialog.FileName;
-                _settingsService.SaveSettings(settings);
             }
         }
 
@@ -65,11 +67,6 @@ namespace SolusManifestApp.Tools.ConfigVdfKeyExtractor
             if (openFileDialog.ShowDialog() == true)
             {
                 TxtCombinedKeysPath.Text = openFileDialog.FileName;
-
-                // Save to settings
-                var settings = _settingsService.LoadSettings();
-                settings.CombinedKeysPath = openFileDialog.FileName;
-                _settingsService.SaveSettings(settings);
             }
         }
 

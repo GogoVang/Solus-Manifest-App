@@ -18,13 +18,13 @@ namespace SolusManifestApp
                 {
                     // Services
                     services.AddSingleton<LoggerService>();
+                    services.AddSingleton<SettingsService>();
                     services.AddSingleton<SteamService>();
                     services.AddSingleton<SteamGamesService>();
                     services.AddSingleton<SteamApiService>();
                     services.AddSingleton<ManifestApiService>();
                     services.AddSingleton<DownloadService>();
                     services.AddSingleton<FileInstallService>();
-                    services.AddSingleton<SettingsService>();
                     services.AddSingleton<UpdateService>();
                     services.AddSingleton<NotificationService>();
                     services.AddSingleton<CacheService>();
@@ -40,8 +40,9 @@ namespace SolusManifestApp
                     services.AddTransient<LibraryViewModel>();
                     services.AddTransient<StoreViewModel>();
                     services.AddTransient<DownloadsViewModel>();
-                    services.AddTransient<ToolsViewModel>();
+                    services.AddSingleton<ToolsViewModel>();
                     services.AddTransient<SettingsViewModel>();
+                    services.AddTransient<SupportViewModel>();
 
                     // Views
                     services.AddSingleton<MainWindow>();

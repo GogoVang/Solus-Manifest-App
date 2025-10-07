@@ -12,10 +12,12 @@ namespace SolusManifestApp.Services
     public class FileInstallService
     {
         private readonly SteamService _steamService;
+        private readonly LoggerService _logger;
 
-        public FileInstallService(SteamService steamService)
+        public FileInstallService(SteamService steamService, LoggerService logger)
         {
             _steamService = steamService;
+            _logger = logger;
         }
 
         public async Task<Dictionary<string, string>> InstallFromZipAsync(string zipPath, bool isGreenLumaMode, Action<string>? progressCallback = null, List<string>? selectedDepotIds = null)
@@ -51,6 +53,46 @@ namespace SolusManifestApp.Services
                     {
                         progressCallback?.Invoke("Extracting depot keys from .lua file...");
                         depotKeys = ExtractDepotKeysFromLua(luaFiles[0]);
+
+                        _logger.Debug($"Extracted {depotKeys.Count} depot keys before filtering");
+
+                        // Extract main appID from lua filename (e.g., "12345.lua" -> "12345")
+                        var luaFileName = Path.GetFileNameWithoutExtension(luaFiles[0]);
+                        string? mainAppId = null;
+                        if (int.TryParse(luaFileName, out _))
+                        {
+                            mainAppId = luaFileName;
+                            _logger.Debug($"Detected main AppID from lua filename: {mainAppId}");
+                        }
+
+                        // Filter depot keys to only include selected depots if provided
+                        if (selectedDepotIds != null && selectedDepotIds.Count > 0)
+                        {
+                            _logger.Debug($"Filtering depot keys to {selectedDepotIds.Count} selected depot IDs: {string.Join(", ", selectedDepotIds)}");
+                            var filteredKeys = new Dictionary<string, string>();
+
+                            // Always include the main AppID key if it exists
+                            if (mainAppId != null && depotKeys.ContainsKey(mainAppId))
+                            {
+                                filteredKeys[mainAppId] = depotKeys[mainAppId];
+                                _logger.Debug($"Including main AppID {mainAppId} depot key");
+                            }
+
+                            foreach (var depotId in selectedDepotIds)
+                            {
+                                if (depotKeys.ContainsKey(depotId))
+                                {
+                                    filteredKeys[depotId] = depotKeys[depotId];
+                                    _logger.Debug($"Including depot {depotId}");
+                                }
+                                else
+                                {
+                                    _logger.Debug($"Depot {depotId} not found in extracted keys");
+                                }
+                            }
+                            depotKeys = filteredKeys;
+                            _logger.Debug($"After filtering: {depotKeys.Count} depot keys (including main AppID if present)");
+                        }
                     }
                     else
                     {
@@ -597,19 +639,32 @@ namespace SolusManifestApp.Services
         {
             try
             {
+                _logger.Debug($"UpdateConfigVdfWithDepotKeys called with {depotKeys?.Count ?? 0} keys");
+
+                if (depotKeys == null || depotKeys.Count == 0)
+                {
+                    _logger.Debug("No depot keys provided");
+                    return false;
+                }
+
                 var steamPath = _steamService.GetSteamPath();
+                _logger.Debug($"Steam path: {steamPath}");
+
                 if (string.IsNullOrEmpty(steamPath))
                 {
+                    _logger.Error("Steam path is null or empty");
                     return false;
                 }
 
                 var configPath = Path.Combine(steamPath, "config");
                 if (!Directory.Exists(configPath))
                 {
+                    _logger.Debug($"Creating config directory: {configPath}");
                     Directory.CreateDirectory(configPath);
                 }
 
                 var configVdfPath = Path.Combine(configPath, "config.vdf");
+                _logger.Debug($"Config.vdf path: {configVdfPath}");
 
                 // Read existing config or create new structure
                 var configContent = new System.Text.StringBuilder();
@@ -617,11 +672,13 @@ namespace SolusManifestApp.Services
 
                 if (File.Exists(configVdfPath))
                 {
+                    _logger.Debug("Config.vdf exists, reading...");
                     var existingContent = File.ReadAllText(configVdfPath);
 
                     // Check if depots section exists
                     if (existingContent.Contains("\"depots\""))
                     {
+                        _logger.Debug("Found existing depots section");
                         hasDepotsSection = true;
                         // Parse and update existing content
                         configContent.Append(existingContent);
@@ -629,6 +686,8 @@ namespace SolusManifestApp.Services
                         // Insert depot keys before the closing brace of depots section
                         var depotsIndex = existingContent.IndexOf("\"depots\"");
                         var depotsEnd = FindClosingBrace(existingContent, depotsIndex);
+
+                        _logger.Debug($"Depots section ends at index: {depotsEnd}");
 
                         if (depotsEnd > 0)
                         {
@@ -638,23 +697,50 @@ namespace SolusManifestApp.Services
                             configContent.Clear();
                             configContent.Append(beforeDepots);
 
-                            // Add depot keys
+                            // Add depot keys with proper indentation
+                            int addedCount = 0;
                             foreach (var kvp in depotKeys)
                             {
-                                configContent.AppendLine($"\t\"{kvp.Key}\"");
-                                configContent.AppendLine("\t{");
-                                configContent.AppendLine($"\t\t\"DecryptionKey\"\t\t\"{kvp.Value}\"");
-                                configContent.AppendLine("\t}");
+                                // Remove any existing entry for this depot ID
+                                if (!beforeDepots.Contains($"\"{kvp.Key}\""))
+                                {
+                                    configContent.AppendLine($"\t\t\t\t\t\"{kvp.Key}\"");
+                                    configContent.AppendLine("\t\t\t\t\t{");
+                                    configContent.AppendLine($"\t\t\t\t\t\t\"DecryptionKey\"\t\t\"{kvp.Value}\"");
+                                    configContent.AppendLine("\t\t\t\t\t}");
+                                    addedCount++;
+                                }
+                                else
+                                {
+                                    _logger.Debug($"Depot {kvp.Key} already exists, skipping");
+                                }
                             }
+
+                            _logger.Info($"Added {addedCount} new depot keys to config.vdf");
 
                             configContent.Append(afterDepots);
                         }
+                        else
+                        {
+                            // Failed to find closing brace
+                            _logger.Error("Failed to find closing brace in depots section");
+                            return false;
+                        }
                     }
+                    else
+                    {
+                        _logger.Debug("No existing depots section found");
+                    }
+                }
+                else
+                {
+                    _logger.Debug("Config.vdf does not exist, will create new");
                 }
 
                 // If no depots section exists, create new config structure
                 if (!hasDepotsSection)
                 {
+                    _logger.Info("Creating new config.vdf structure");
                     configContent.Clear();
                     configContent.AppendLine("\"InstallConfigStore\"");
                     configContent.AppendLine("{");
@@ -669,6 +755,7 @@ namespace SolusManifestApp.Services
 
                     foreach (var kvp in depotKeys)
                     {
+                        _logger.Debug($"Adding depot {kvp.Key}");
                         configContent.AppendLine($"\t\t\t\t\t\"{kvp.Key}\"");
                         configContent.AppendLine("\t\t\t\t\t{");
                         configContent.AppendLine($"\t\t\t\t\t\t\"DecryptionKey\"\t\t\"{kvp.Value}\"");
@@ -682,11 +769,14 @@ namespace SolusManifestApp.Services
                     configContent.AppendLine("}");
                 }
 
+                _logger.Debug($"Writing {configContent.Length} characters to config.vdf");
                 File.WriteAllText(configVdfPath, configContent.ToString());
+                _logger.Info("Successfully wrote config.vdf");
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.Error($"Failed to update config.vdf: {ex.Message}");
                 return false;
             }
         }
@@ -722,12 +812,16 @@ namespace SolusManifestApp.Services
 
             try
             {
+                _logger.Debug($"Extracting depot keys from: {luaFilePath}");
+
                 if (!File.Exists(luaFilePath))
                 {
+                    _logger.Error("Lua file does not exist");
                     return depotKeys;
                 }
 
                 var lines = File.ReadAllLines(luaFilePath);
+                _logger.Debug($"Reading {lines.Length} lines from lua file");
 
                 foreach (var line in lines)
                 {
@@ -761,13 +855,17 @@ namespace SolusManifestApp.Services
                             if (!string.IsNullOrEmpty(depotId) && !string.IsNullOrEmpty(key) && key.Length > 10)
                             {
                                 depotKeys[depotId] = key;
+                                _logger.Debug($"Extracted depot key: {depotId}");
                             }
                         }
                     }
                 }
+
+                _logger.Info($"Extracted {depotKeys.Count} total depot keys from lua file");
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.Error($"Error extracting depot keys: {ex.Message}");
                 // Return empty dictionary on error
             }
 
@@ -1009,7 +1107,7 @@ namespace SolusManifestApp.Services
                     }
                 }
 
-                // 1. Remove all AppList .txt files for ALL depot IDs
+                // 1. Remove all AppList .txt files for main appId AND all depot IDs
                 string appListPath = !string.IsNullOrEmpty(customAppListPath)
                     ? customAppListPath
                     : Path.Combine(steamPath, "AppList");
@@ -1017,18 +1115,26 @@ namespace SolusManifestApp.Services
                 if (Directory.Exists(appListPath))
                 {
                     var allAppListFiles = Directory.GetFiles(appListPath, "*.txt");
+                    int removedCount = 0;
                     foreach (var file in allAppListFiles)
                     {
                         try
                         {
                             var fileContent = File.ReadAllText(file).Trim();
-                            if (depotIds.Contains(fileContent))
+                            // Remove if it matches the appId OR any depot ID
+                            if (fileContent == appId || depotIds.Contains(fileContent))
                             {
                                 File.Delete(file);
+                                _logger.Debug($"Deleted AppList file: {Path.GetFileName(file)}");
+                                removedCount++;
                             }
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            _logger.Error($"Failed to delete AppList file {Path.GetFileName(file)}: {ex.Message}");
+                        }
                     }
+                    _logger.Info($"Removed {removedCount} AppList files for app {appId}");
                 }
 
                 // 2. Remove ACF manifest file
@@ -1038,25 +1144,34 @@ namespace SolusManifestApp.Services
                     if (File.Exists(acfPath))
                     {
                         File.Delete(acfPath);
+                        _logger.Debug($"Deleted ACF file: appmanifest_{appId}.acf");
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    _logger.Error($"Failed to delete ACF file: {ex.Message}");
+                }
 
-                // 3. Remove depot manifest files ({depotId}_*.manifest)
-                var steamAppsPath = Path.Combine(steamPath, "steamapps");
-                if (Directory.Exists(steamAppsPath))
+                // 3. Remove depot manifest files ({depotId}_manifestgid.manifest) from depotcache
+                var depotCachePath = Path.Combine(steamPath, "depotcache");
+
+                if (Directory.Exists(depotCachePath))
                 {
                     foreach (var depotId in depotIds)
                     {
                         try
                         {
-                            var manifestFiles = Directory.GetFiles(steamAppsPath, $"{depotId}_*.manifest");
+                            var manifestFiles = Directory.GetFiles(depotCachePath, $"{depotId}_*.manifest");
                             foreach (var manifestFile in manifestFiles)
                             {
                                 File.Delete(manifestFile);
+                                _logger.Debug($"Deleted manifest file: {Path.GetFileName(manifestFile)}");
                             }
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            _logger.Error($"Failed to delete manifests for depot {depotId}: {ex.Message}");
+                        }
                     }
                 }
 

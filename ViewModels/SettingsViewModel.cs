@@ -4,6 +4,8 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using SolusManifestApp.Models;
 using SolusManifestApp.Services;
+using SolusManifestApp.Tools.SteamAuthPro.Models;
+using SolusManifestApp.Tools.SteamAuthPro.Views;
 using System;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -23,6 +25,7 @@ namespace SolusManifestApp.ViewModels
         private readonly LuaInstallerViewModel _luaInstallerViewModel;
         private readonly SteamLibraryService _steamLibraryService;
         private readonly ThemeService _themeService;
+        private readonly LoggerService _logger;
 
         [ObservableProperty]
         private AppSettings _settings;
@@ -101,6 +104,28 @@ namespace SolusManifestApp.ViewModels
 
         private bool _isLoading; // Flag to prevent marking as unsaved during load
 
+        // SteamAuth Pro properties
+        [ObservableProperty]
+        private ObservableCollection<string> _steamAuthProAccounts = new();
+
+        [ObservableProperty]
+        private int _steamAuthProActiveAccountIndex = -1;
+
+        [ObservableProperty]
+        private string _steamAuthProApiUrl = "https://drm.steam.run/ticket/create";
+
+        [ObservableProperty]
+        private string _steamAuthProPhpSessionId = string.Empty;
+
+        private Config _steamAuthProConfig = null!;
+
+        // Config VDF Extractor properties
+        [ObservableProperty]
+        private string _configVdfPath = string.Empty;
+
+        [ObservableProperty]
+        private string _combinedKeysPath = string.Empty;
+
         public bool ShowAdvancedNormalModeSettings => IsGreenLumaNormalMode && IsAdvancedNormalMode;
 
         // Mark as unsaved when properties change
@@ -115,6 +140,11 @@ namespace SolusManifestApp.ViewModels
         partial void OnUseDefaultInstallLocationChanged(bool value) => MarkAsUnsaved();
         partial void OnSelectedLibraryFolderChanged(string value) => MarkAsUnsaved();
         partial void OnDllInjectorPathChanged(string value) => MarkAsUnsaved();
+        partial void OnSteamAuthProApiUrlChanged(string value) => MarkAsUnsaved();
+        partial void OnSteamAuthProPhpSessionIdChanged(string value) => MarkAsUnsaved();
+        partial void OnSteamAuthProActiveAccountIndexChanged(int value) => MarkAsUnsaved();
+        partial void OnConfigVdfPathChanged(string value) => MarkAsUnsaved();
+        partial void OnCombinedKeysPathChanged(string value) => MarkAsUnsaved();
 
         private void MarkAsUnsaved()
         {
@@ -207,7 +237,8 @@ namespace SolusManifestApp.ViewModels
             NotificationService notificationService,
             LuaInstallerViewModel luaInstallerViewModel,
             SteamLibraryService steamLibraryService,
-            ThemeService themeService)
+            ThemeService themeService,
+            LoggerService logger)
         {
             _steamService = steamService;
             _settingsService = settingsService;
@@ -218,6 +249,7 @@ namespace SolusManifestApp.ViewModels
             _luaInstallerViewModel = luaInstallerViewModel;
             _steamLibraryService = steamLibraryService;
             _themeService = themeService;
+            _logger = logger;
 
             _settings = new AppSettings();
             LoadSettings();
@@ -307,6 +339,16 @@ namespace SolusManifestApp.ViewModels
                 DllInjectorPath = Settings.DLLInjectorPath;
             }
 
+            // Load SteamAuth Pro settings
+            _steamAuthProConfig = Config.Load();
+            SteamAuthProApiUrl = _steamAuthProConfig.ApiUrl;
+            SteamAuthProPhpSessionId = _steamAuthProConfig.PhpSessionId;
+            LoadSteamAuthProAccounts();
+
+            // Load Config VDF Extractor settings
+            ConfigVdfPath = Settings.ConfigVdfPath;
+            CombinedKeysPath = Settings.CombinedKeysPath;
+
             _isLoading = false;
             HasUnsavedChanges = false; // Clear unsaved changes flag after load
 
@@ -333,6 +375,15 @@ namespace SolusManifestApp.ViewModels
             {
                 Settings.Theme = theme;
             }
+
+            // Save SteamAuth Pro settings
+            _steamAuthProConfig.ApiUrl = SteamAuthProApiUrl;
+            _steamAuthProConfig.PhpSessionId = SteamAuthProPhpSessionId;
+            _steamAuthProConfig.Save();
+
+            // Save Config VDF Extractor settings
+            Settings.ConfigVdfPath = ConfigVdfPath;
+            Settings.CombinedKeysPath = CombinedKeysPath;
 
             try
             {
@@ -628,6 +679,174 @@ namespace SolusManifestApp.ViewModels
                 _cacheService.ClearAllCache();
                 UpdateCacheSize();
                 _notificationService.ShowSuccess("Cache cleared successfully");
+                _logger.Info("User cleared cache from settings");
+            }
+        }
+
+        [RelayCommand]
+        private void ClearLogs()
+        {
+            var result = MessageBoxHelper.Show(
+                "This will delete all old log files (except the current session log).\n\nContinue?",
+                "Clear Logs",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                _logger.ClearOldLogs();
+                _notificationService.ShowSuccess("Old logs cleared successfully");
+                _logger.Info("User cleared old logs from settings");
+            }
+        }
+
+        [RelayCommand]
+        private void SteamAuthProAutoDetect()
+        {
+            var steamAccounts = SteamAccountManager.GetSteamAccounts();
+
+            if (steamAccounts.Count == 0)
+            {
+                MessageBoxHelper.Show("No Steam accounts detected. Make sure Steam is installed and you have logged in accounts.",
+                    "No Accounts Found", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            int addedCount = 0;
+            foreach (var kvp in steamAccounts)
+            {
+                var steamId = kvp.Key;
+                var steamAccount = kvp.Value;
+
+                // Check if account already exists by SteamId
+                var exists = _steamAuthProConfig.Accounts.Any(a => a.SteamId == steamId);
+
+                if (!exists)
+                {
+                    var displayName = string.IsNullOrEmpty(steamAccount.PersonaName)
+                        ? $"{steamAccount.AccountName} → {steamId}"
+                        : $"{steamAccount.PersonaName} → {steamAccount.AccountName}";
+
+                    _steamAuthProConfig.AddAccount(displayName, steamId);
+                    addedCount++;
+                }
+            }
+
+            LoadSteamAuthProAccounts();
+
+            if (addedCount > 0)
+            {
+                MessageBoxHelper.Show($"Added {addedCount} Steam account(s).",
+                    "Auto-Detect Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                MessageBoxHelper.Show("All detected Steam accounts are already in the list.",
+                    "Auto-Detect Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
+        [RelayCommand]
+        private void SteamAuthProAddAccount()
+        {
+            var dialog = new InputDialog("Add Account", "Account Name:", "")
+            {
+                Owner = Application.Current.MainWindow
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                var name = dialog.Result;
+                if (string.IsNullOrWhiteSpace(name))
+                    return;
+
+                _steamAuthProConfig.AddAccount(name.Trim());
+                LoadSteamAuthProAccounts();
+            }
+        }
+
+        [RelayCommand]
+        private void SteamAuthProRemoveAccount()
+        {
+            if (SteamAuthProActiveAccountIndex == -1)
+            {
+                MessageBoxHelper.Show("Please select an account to remove.", "No Selection", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var result = MessageBoxHelper.Show("Are you sure you want to remove this account?", "Confirm Delete",
+                MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                _steamAuthProConfig.RemoveAccount(SteamAuthProActiveAccountIndex);
+                LoadSteamAuthProAccounts();
+            }
+        }
+
+        [RelayCommand]
+        private void SteamAuthProSetActive()
+        {
+            if (SteamAuthProActiveAccountIndex == -1)
+            {
+                MessageBoxHelper.Show("Please select an account to set as active.", "No Selection", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            _steamAuthProConfig.SetActiveAccount(SteamAuthProActiveAccountIndex);
+            LoadSteamAuthProAccounts();
+        }
+
+        private void LoadSteamAuthProAccounts()
+        {
+            SteamAuthProAccounts.Clear();
+            for (int i = 0; i < _steamAuthProConfig.Accounts.Count; i++)
+            {
+                var account = _steamAuthProConfig.Accounts[i];
+                var isActive = i == _steamAuthProConfig.ActiveAccount ? " [ACTIVE]" : "";
+                SteamAuthProAccounts.Add($"{account.Name}{isActive}");
+            }
+        }
+
+        [RelayCommand]
+        private void BrowseConfigVdf()
+        {
+            var openFileDialog = new OpenFileDialog
+            {
+                Filter = "VDF files (*.vdf)|*.vdf|All files (*.*)|*.*",
+                Title = "Select config.vdf file"
+            };
+
+            if (!string.IsNullOrEmpty(ConfigVdfPath) && File.Exists(ConfigVdfPath))
+            {
+                openFileDialog.InitialDirectory = Path.GetDirectoryName(ConfigVdfPath);
+                openFileDialog.FileName = Path.GetFileName(ConfigVdfPath);
+            }
+
+            if (openFileDialog.ShowDialog() == true)
+            {
+                ConfigVdfPath = openFileDialog.FileName;
+            }
+        }
+
+        [RelayCommand]
+        private void BrowseCombinedKeys()
+        {
+            var openFileDialog = new OpenFileDialog
+            {
+                Filter = "Key files (*.key)|*.key|All files (*.*)|*.*",
+                Title = "Select combinedkeys.key file"
+            };
+
+            if (!string.IsNullOrEmpty(CombinedKeysPath) && File.Exists(CombinedKeysPath))
+            {
+                openFileDialog.InitialDirectory = Path.GetDirectoryName(CombinedKeysPath);
+                openFileDialog.FileName = Path.GetFileName(CombinedKeysPath);
+            }
+
+            if (openFileDialog.ShowDialog() == true)
+            {
+                CombinedKeysPath = openFileDialog.FileName;
             }
         }
 

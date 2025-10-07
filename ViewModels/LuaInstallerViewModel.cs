@@ -283,10 +283,28 @@ namespace SolusManifestApp.ViewModels
                         selectedDepotIds);
 
                     // If GreenLuma mode, update Config.VDF with depot keys
-                    if (settings.Mode == ToolMode.GreenLuma && depotKeys.Count > 0)
+                    if (settings.Mode == ToolMode.GreenLuma)
                     {
-                        StatusMessage = $"Updating Config.VDF with {depotKeys.Count} depot keys...";
-                        _fileInstallService.UpdateConfigVdfWithDepotKeys(depotKeys);
+                        StatusMessage = $"Extracted {depotKeys.Count} depot keys from package";
+
+                        if (depotKeys.Count > 0)
+                        {
+                            StatusMessage = $"Updating Config.VDF with {depotKeys.Count} depot keys...";
+
+                            var success = _fileInstallService.UpdateConfigVdfWithDepotKeys(depotKeys);
+                            if (success)
+                            {
+                                StatusMessage = $"Successfully added {depotKeys.Count} depot keys to config.vdf";
+                            }
+                            else
+                            {
+                                _notificationService.ShowWarning("Failed to update config.vdf with depot keys. You may need to add them manually.");
+                            }
+                        }
+                        else
+                        {
+                            _notificationService.ShowWarning("No depot keys found in the package. Config.vdf will not be updated.");
+                        }
                     }
                 }
                 else if (SelectedFilePath.EndsWith(".lua", StringComparison.OrdinalIgnoreCase))

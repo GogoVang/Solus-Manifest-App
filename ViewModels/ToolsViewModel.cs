@@ -6,6 +6,9 @@ namespace SolusManifestApp.ViewModels
 {
     public partial class ToolsViewModel : ObservableObject
     {
+        [ObservableProperty]
+        private int _selectedTabIndex = 0;
+
         [RelayCommand]
         private void OpenSteamTools()
         {

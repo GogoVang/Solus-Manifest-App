@@ -19,7 +19,8 @@ namespace SolusManifestApp
                     writer.WriteLine("=== Testing Steam Detection ===");
                     writer.WriteLine($"Time: {DateTime.Now}");
 
-                    var steamService = new SteamService();
+                    var settingsService = new SettingsService();
+                    var steamService = new SteamService(settingsService);
                     var steamPath = steamService.GetSteamPath();
 
                     writer.WriteLine($"Steam Path: {steamPath ?? "NULL"}");

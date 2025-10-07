@@ -175,8 +175,8 @@ namespace SolusManifestApp.Services
         /// </summary>
         public async Task<List<DepotInfo>> GetCombinedDepotInfo(string appId, string luaContent)
         {
-            // Parse depot info from lua file
-            var luaDepots = _luaParser.ParseDepotsFromLua(luaContent);
+            // Parse depot info from lua file (filter out main AppID)
+            var luaDepots = _luaParser.ParseDepotsFromLua(luaContent, appId);
 
             // Get language info from SteamCMD
             var steamCmdDepots = await GetDepotsFromSteamCMD(appId);

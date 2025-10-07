@@ -23,27 +23,6 @@
     </WindowChrome.WindowChrome>
 
     <Window.Resources>
-        <DataTemplate DataType="{x:Type viewmodels:HomeViewModel}">
-            <views:HomePage/>
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type viewmodels:LuaInstallerViewModel}">
-            <views:LuaInstallerPage/>
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type viewmodels:LibraryViewModel}">
-            <views:LibraryPage/>
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type viewmodels:StoreViewModel}">
-            <views:StorePage/>
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type viewmodels:DownloadsViewModel}">
-            <views:DownloadsPage/>
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type viewmodels:ToolsViewModel}">
-            <views:ToolsPage/>
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type viewmodels:SettingsViewModel}">
-            <views:SettingsPage/>
-        </DataTemplate>
     </Window.Resources>
 
     <Border Background="{DynamicResource PrimaryDarkBrush}"
@@ -276,6 +255,15 @@
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="⚙️" FontSize="16" Margin="0,0,10,0"/>
                                 <TextBlock Text="Settings" FontSize="14"/>
+                            </StackPanel>
+                        </Button>
+
+                        <Button Style="{StaticResource NavButtonStyle}"
+                                Command="{Binding NavigateToSupportCommand}"
+                                Tag="{Binding CurrentPageName, Converter={StaticResource PageNameToTagConverter}, ConverterParameter=Support}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="❓" FontSize="16" Margin="0,0,10,0"/>
+                                <TextBlock Text="Support" FontSize="14"/>
                             </StackPanel>
                         </Button>
                     </StackPanel>

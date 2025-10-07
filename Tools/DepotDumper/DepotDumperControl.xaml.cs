@@ -91,6 +91,10 @@ namespace SolusManifestApp.Tools.DepotDumper
             AppendLog("Cancellation requested...");
             UpdateStatus("Cancelled by user");
             CancelButton.IsEnabled = false;
+
+            // Show Done button so user can go back to login
+            CancelButton.Visibility = Visibility.Collapsed;
+            DoneButton.Visibility = Visibility.Visible;
         }
 
         private void DoneButton_Click(object sender, RoutedEventArgs e)

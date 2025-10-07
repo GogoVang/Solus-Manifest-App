@@ -250,29 +250,27 @@ namespace SolusManifestApp.ViewModels
                     }
                 }
 
-                // Install files to Steam directories
-                StatusMessage = $"Extracting files...";
-                await _downloadService.ExtractToSteamDirectoriesAsync(filePath, settings.SteamPath, appId, selectedDepotIds, settings.Mode == ToolMode.GreenLuma);
+                // Install files using the proper installation service
+                StatusMessage = $"Installing files...";
 
-                // If GreenLuma mode, extract depot keys and update Config.VDF
-                if (settings.Mode == ToolMode.GreenLuma)
+                var depotKeys = await _fileInstallService.InstallFromZipAsync(
+                    filePath,
+                    settings.Mode == ToolMode.GreenLuma,
+                    message => StatusMessage = message,
+                    selectedDepotIds);
+
+                // If GreenLuma mode, update Config.VDF with depot keys
+                if (settings.Mode == ToolMode.GreenLuma && depotKeys.Count > 0)
                 {
-                    StatusMessage = $"Updating configuration...";
-
-                    var stpluginPath = _steamService.GetStPluginPath();
-                    if (!string.IsNullOrEmpty(stpluginPath))
+                    StatusMessage = $"Updating Config.VDF with {depotKeys.Count} depot keys...";
+                    var success = _fileInstallService.UpdateConfigVdfWithDepotKeys(depotKeys);
+                    if (!success)
                     {
-                        var luaFilePath = Path.Combine(stpluginPath, $"{appId}.lua");
-
-                        if (File.Exists(luaFilePath))
-                        {
-                            var depotKeys = _fileInstallService.ExtractDepotKeysFromLua(luaFilePath);
-
-                            if (depotKeys.Count > 0)
-                            {
-                                _fileInstallService.UpdateConfigVdfWithDepotKeys(depotKeys);
-                            }
-                        }
+                        MessageBoxHelper.Show(
+                            "Failed to update config.vdf with depot keys. You may need to add them manually.",
+                            "Warning",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Warning);
                     }
                 }
 

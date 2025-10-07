@@ -3,10 +3,10 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SolusManifestApp.Models;
 using SolusManifestApp.Services;
-using SolusManifestApp.Views.Dialogs;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 
@@ -17,14 +17,11 @@ namespace SolusManifestApp.ViewModels
         private readonly ManifestApiService _manifestApiService;
         private readonly DownloadService _downloadService;
         private readonly SettingsService _settingsService;
-        private readonly SteamApiService _steamApiService;
         private readonly CacheService _cacheService;
-        private readonly DepotDownloadService _depotDownloadService;
-        private readonly FileInstallService _fileInstallService;
-        private readonly SteamService _steamService;
+        private readonly SemaphoreSlim _iconLoadSemaphore = new SemaphoreSlim(10, 10); // Max 10 concurrent downloads
 
         [ObservableProperty]
-        private ObservableCollection<Manifest> _availableGames = new();
+        private ObservableCollection<LibraryGame> _games = new();
 
         [ObservableProperty]
         private string _searchQuery = string.Empty;
@@ -33,29 +30,194 @@ namespace SolusManifestApp.ViewModels
         private bool _isLoading;
 
         [ObservableProperty]
-        private string _statusMessage = "Search for games using Steam Store";
+        private string _statusMessage = "Browse available games from the library";
+
+        [ObservableProperty]
+        private string _sortBy = "updated"; // "updated" or "name"
+
+        [ObservableProperty]
+        private int _totalCount;
+
+        [ObservableProperty]
+        private int _currentOffset;
+
+        [ObservableProperty]
+        private bool _hasMore;
+
+        [ObservableProperty]
+        private int _currentPage = 1;
+
+        [ObservableProperty]
+        private int _totalPages;
+
+        [ObservableProperty]
+        private bool _canGoNext;
+
+        [ObservableProperty]
+        private bool _canGoPrevious;
+
+        private const int PageSize = 20;
 
         public StoreViewModel(
             ManifestApiService manifestApiService,
             DownloadService downloadService,
             SettingsService settingsService,
-            CacheService cacheService,
-            DepotDownloadService depotDownloadService,
-            FileInstallService fileInstallService,
-            SteamService steamService)
+            CacheService cacheService)
         {
             _manifestApiService = manifestApiService;
             _downloadService = downloadService;
             _settingsService = settingsService;
             _cacheService = cacheService;
-            _steamApiService = new SteamApiService(_cacheService);
-            _depotDownloadService = depotDownloadService;
-            _fileInstallService = fileInstallService;
-            _steamService = steamService;
+
+            // Auto-load games on startup
+            _ = InitializeAsync();
+        }
+
+        private async Task InitializeAsync()
+        {
+            var settings = _settingsService.LoadSettings();
+            if (!string.IsNullOrEmpty(settings.ApiKey))
+            {
+                await LoadGamesAsync();
+            }
+        }
+
+        partial void OnSearchQueryChanged(string value)
+        {
+            // Auto-search when query is cleared
+            if (string.IsNullOrWhiteSpace(value) && Games.Count > 0)
+            {
+                _ = LoadGamesAsync();
+            }
         }
 
         [RelayCommand]
         private async Task LoadGames()
+        {
+            var settings = _settingsService.LoadSettings();
+
+            if (string.IsNullOrEmpty(settings.ApiKey))
+            {
+                StatusMessage = "Please enter API key in settings";
+                return;
+            }
+
+            // Reset to first page
+            CurrentPage = 1;
+            CurrentOffset = 0;
+            Games.Clear();
+
+            await LoadGamesAsync();
+        }
+
+        [RelayCommand]
+        private async Task NextPage()
+        {
+            if (!CanGoNext || IsLoading) return;
+
+            CurrentPage++;
+            CurrentOffset = (CurrentPage - 1) * PageSize;
+            Games.Clear();
+            await LoadGamesAsync();
+        }
+
+        [RelayCommand]
+        private async Task PreviousPage()
+        {
+            if (!CanGoPrevious || IsLoading) return;
+
+            CurrentPage--;
+            CurrentOffset = (CurrentPage - 1) * PageSize;
+            Games.Clear();
+            await LoadGamesAsync();
+        }
+
+        [RelayCommand]
+        private async Task SearchGames()
+        {
+            var settings = _settingsService.LoadSettings();
+
+            if (string.IsNullOrEmpty(settings.ApiKey))
+            {
+                StatusMessage = "Please enter API key in settings";
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(SearchQuery))
+            {
+                // If search is empty, load library normally
+                await LoadGames();
+                return;
+            }
+
+            if (SearchQuery.Length < 2)
+            {
+                StatusMessage = "Enter at least 2 characters to search";
+                return;
+            }
+
+            IsLoading = true;
+            StatusMessage = "Searching...";
+            Games.Clear();
+
+            try
+            {
+                var result = await _manifestApiService.SearchLibraryAsync(SearchQuery, settings.ApiKey, 100);
+
+                if (result != null && result.Results.Count > 0)
+                {
+                    foreach (var game in result.Results)
+                    {
+                        Games.Add(game);
+                    }
+
+                    TotalCount = result.TotalMatches;
+                    CurrentPage = 1;
+                    TotalPages = 1;
+                    CanGoPrevious = false;
+                    CanGoNext = false;
+                    StatusMessage = $"Found {result.ReturnedCount} of {result.TotalMatches} matching games";
+
+                    // Load all icons in parallel
+                    _ = LoadAllGameIconsAsync(result.Results);
+                }
+                else
+                {
+                    StatusMessage = "No games found";
+                    TotalCount = 0;
+                    CurrentPage = 1;
+                    TotalPages = 0;
+                    CanGoPrevious = false;
+                    CanGoNext = false;
+                }
+            }
+            catch (System.Exception ex)
+            {
+                StatusMessage = $"Search failed: {ex.Message}";
+                MessageBoxHelper.Show(
+                    $"Failed to search: {ex.Message}",
+                    "Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+            finally
+            {
+                IsLoading = false;
+            }
+        }
+
+        [RelayCommand]
+        private async Task ChangeSortBy(string sortBy)
+        {
+            if (SortBy == sortBy) return;
+
+            SortBy = sortBy;
+            CurrentOffset = 0;
+            Games.Clear();
+            await LoadGamesAsync();
+        }
+
+        private async Task LoadGamesAsync()
         {
             var settings = _settingsService.LoadSettings();
 
@@ -70,15 +232,41 @@ namespace SolusManifestApp.ViewModels
 
             try
             {
-                var games = await _manifestApiService.GetAllGamesAsync(settings.ApiKey);
-                if (games != null)
+                var result = await _manifestApiService.GetLibraryAsync(
+                    settings.ApiKey,
+                    limit: PageSize,
+                    offset: CurrentOffset,
+                    sortBy: SortBy);
+
+                if (result != null && result.Games.Count > 0)
                 {
-                    AvailableGames = new ObservableCollection<Manifest>(games);
-                    StatusMessage = $"{games.Count} game(s) available";
+                    Games.Clear();
+
+                    foreach (var game in result.Games)
+                    {
+                        Games.Add(game);
+                    }
+
+                    TotalCount = result.TotalCount;
+                    TotalPages = (int)System.Math.Ceiling((double)TotalCount / PageSize);
+
+                    CanGoPrevious = CurrentPage > 1;
+                    CanGoNext = CurrentPage < TotalPages;
+
+                    var startIndex = CurrentOffset + 1;
+                    var endIndex = System.Math.Min(CurrentOffset + result.Games.Count, TotalCount);
+                    StatusMessage = $"Showing {startIndex}-{endIndex} of {TotalCount} games (Page {CurrentPage} of {TotalPages})";
+
+                    // Load all icons in parallel
+                    _ = LoadAllGameIconsAsync(result.Games);
                 }
                 else
                 {
-                    StatusMessage = "No games found";
+                    StatusMessage = "No games available";
+                    TotalCount = 0;
+                    TotalPages = 0;
+                    CanGoPrevious = false;
+                    CanGoNext = false;
                 }
             }
             catch (System.Exception ex)
@@ -96,88 +284,43 @@ namespace SolusManifestApp.ViewModels
             }
         }
 
-        [RelayCommand]
-        private async Task SearchGames()
+        private async Task LoadAllGameIconsAsync(List<LibraryGame> games)
         {
-            if (string.IsNullOrWhiteSpace(SearchQuery))
-            {
-                AvailableGames.Clear();
-                StatusMessage = "Enter a search term";
-                return;
-            }
+            // Create tasks for all games
+            var iconTasks = games
+                .Where(g => !string.IsNullOrEmpty(g.HeaderImage))
+                .Select(game => LoadGameIconAsync(game))
+                .ToList();
 
-            IsLoading = true;
-            StatusMessage = "Searching Steam Store...";
+            // Wait for all to complete (with semaphore limiting concurrency)
+            await Task.WhenAll(iconTasks);
+        }
 
+        private async Task LoadGameIconAsync(LibraryGame game)
+        {
+            await _iconLoadSemaphore.WaitAsync();
             try
             {
-                // Search using Steam Store API
-                var steamResults = await _steamApiService.SearchStoreWithCacheAsync(SearchQuery, 25);
+                var iconPath = await _cacheService.GetIconAsync(game.GameId, game.HeaderImage);
 
-                if (steamResults != null && steamResults.Items.Count > 0)
+                // Update on UI thread
+                await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
                 {
-                    // Convert Steam search results to Manifest objects for display
-                    var manifests = steamResults.Items.Select(item =>
-                    {
-                        var description = $"Type: {item.Type}";
-                        if (!string.IsNullOrEmpty(item.Metascore))
-                        {
-                            description += $" | Metascore: {item.Metascore}";
-                        }
-
-                        return new Manifest
-                        {
-                            AppId = item.Id.ToString(),
-                            Name = item.Name,
-                            Description = description,
-                            IconUrl = !string.IsNullOrEmpty(item.TinyImage) ? item.TinyImage : "",
-                            Size = 0, // Unknown from Steam search
-                            DownloadUrl = $"https://manifest.morrenus.xyz/api/v1/manifest/{item.Id}"
-                        };
-                    }).ToList();
-
-                    AvailableGames = new ObservableCollection<Manifest>(manifests);
-                    StatusMessage = $"Found {steamResults.Items.Count} game(s) - Total: {steamResults.Total}";
-
-                    // Load icons in background
-                    foreach (var manifest in manifests)
-                    {
-                        if (!string.IsNullOrEmpty(manifest.IconUrl))
-                        {
-                            _ = Task.Run(async () =>
-                            {
-                                try
-                                {
-                                    manifest.CachedIconPath = await _cacheService.GetIconAsync(manifest.AppId, manifest.IconUrl);
-                                }
-                                catch { }
-                            });
-                        }
-                    }
-                }
-                else
-                {
-                    AvailableGames.Clear();
-                    StatusMessage = "No results found";
-                }
+                    game.CachedIconPath = iconPath;
+                });
             }
-            catch (System.Exception ex)
+            catch
             {
-                StatusMessage = $"Error: {ex.Message}";
-                MessageBoxHelper.Show(
-                    $"Search failed: {ex.Message}",
-                    "Error",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error);
+                // Silently fail for individual icons
             }
             finally
             {
-                IsLoading = false;
+                _iconLoadSemaphore.Release();
             }
         }
 
         [RelayCommand]
-        private async Task DownloadGame(Manifest manifest)
+        private async Task DownloadGame(LibraryGame game)
         {
             var settings = _settingsService.LoadSettings();
 
@@ -191,34 +334,35 @@ namespace SolusManifestApp.ViewModels
                 return;
             }
 
+            if (!game.ManifestAvailable)
+            {
+                MessageBoxHelper.Show(
+                    $"Manifest for '{game.GameName}' is not available yet.",
+                    "Not Available",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
             try
             {
-                // Check if game exists first
-                StatusMessage = $"Checking game status: {manifest.Name}";
-                var gameStatus = await _manifestApiService.GetGameStatusAsync(manifest.AppId, settings.ApiKey);
-
-                if (gameStatus == null || gameStatus.Status != "available")
+                // Create a manifest object for download
+                var manifest = new Manifest
                 {
-                    MessageBoxHelper.Show(
-                        $"Game '{manifest.Name}' is not available for download.\n\nStatus: {gameStatus?.Status ?? "unknown"}",
-                        "Game Not Available",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Error);
-                    StatusMessage = $"Game not available: {manifest.Name}";
-                    return;
-                }
+                    AppId = game.GameId,
+                    Name = game.GameName,
+                    IconUrl = game.HeaderImage,
+                    Size = game.ManifestSize ?? 0,
+                    DownloadUrl = $"https://manifest.morrenus.xyz/api/v1/manifest/{game.GameId}"
+                };
 
-                // Update manifest with actual file size from status
-                manifest.Size = gameStatus.FileSize;
-
-                // Download the zip file only
-                StatusMessage = $"Downloading: {manifest.Name}";
+                StatusMessage = $"Downloading: {game.GameName}";
                 var zipFilePath = await _downloadService.DownloadGameFileOnlyAsync(manifest, settings.DownloadsPath, settings.ApiKey);
 
-                StatusMessage = $"{manifest.Name} downloaded successfully";
+                StatusMessage = $"{game.GameName} downloaded successfully";
 
                 MessageBoxHelper.Show(
-                    $"{manifest.Name} has been downloaded!\n\nGo to the Downloads page to install it.",
+                    $"{game.GameName} has been downloaded!\n\nGo to the Downloads page to install it.",
                     "Download Complete",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
@@ -227,7 +371,7 @@ namespace SolusManifestApp.ViewModels
             {
                 StatusMessage = $"Download failed: {ex.Message}";
                 MessageBoxHelper.Show(
-                    $"Failed to download {manifest.Name}: {ex.Message}",
+                    $"Failed to download {game.GameName}: {ex.Message}",
                     "Error",
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
