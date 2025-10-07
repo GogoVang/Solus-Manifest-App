@@ -2,8 +2,9 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>icon.ico</ApplicationIcon>
     <AssemblyName>SolusManifestApp</AssemblyName>
     <RootNamespace>SolusManifestApp</RootNamespace>
@@ -21,6 +22,7 @@
     <PackageReference Include="protobuf-net" Version="3.2.45" />
     <PackageReference Include="QRCoder" Version="1.6.0" />
     <PackageReference Include="SteamKit2" Version="3.0.1" />
+    <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
   </ItemGroup>
 
   <ItemGroup>
@@ -28,6 +30,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <Resource Include="icon.ico" />
+    <None Update="icon.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

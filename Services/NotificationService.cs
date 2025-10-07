@@ -1,16 +1,25 @@
-using SolusManifestApp.Helpers;
+using Microsoft.Toolkit.Uwp.Notifications;
 using System;
-using System.Windows;
 
 namespace SolusManifestApp.Services
 {
     public class NotificationService
     {
         private readonly SettingsService _settingsService;
+        private static bool _isInitialized = false;
 
         public NotificationService(SettingsService settingsService)
         {
             _settingsService = settingsService;
+
+            if (!_isInitialized)
+            {
+                ToastNotificationManagerCompat.OnActivated += toastArgs =>
+                {
+                    // Handle toast activation if needed
+                };
+                _isInitialized = true;
+            }
         }
 
         public void ShowNotification(string title, string message, NotificationType type = NotificationType.Info)
@@ -19,19 +28,18 @@ namespace SolusManifestApp.Services
             if (!settings.ShowNotifications)
                 return;
 
-            // For now, use MessageBox. Can be replaced with Windows Toast Notifications
-            Application.Current.Dispatcher.Invoke(() =>
+            try
             {
-                var icon = type switch
-                {
-                    NotificationType.Success => MessageBoxImage.Information,
-                    NotificationType.Warning => MessageBoxImage.Warning,
-                    NotificationType.Error => MessageBoxImage.Error,
-                    _ => MessageBoxImage.Information
-                };
-
-                MessageBoxHelper.Show(message, title, MessageBoxButton.OK, icon);
-            });
+                new ToastContentBuilder()
+                    .AddText(title)
+                    .AddText(message)
+                    .Show();
+            }
+            catch (Exception ex)
+            {
+                // If toast fails, log the error but don't crash
+                System.Diagnostics.Debug.WriteLine($"Toast notification failed: {ex.Message}");
+            }
         }
 
         public void ShowSuccess(string message, string title = "Success")
@@ -56,7 +64,7 @@ namespace SolusManifestApp.Services
 
         public void ShowInstallComplete(string gameName)
         {
-            ShowSuccess($"{gameName} has been installed successfully!\n\nRestart Steam for changes to take effect.", "Installation Complete");
+            ShowSuccess($"{gameName} has been installed successfully! Restart Steam for changes to take effect.", "Installation Complete");
         }
 
         public void ShowUpdateAvailable(string version)

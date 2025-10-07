@@ -39,6 +39,15 @@ namespace SolusManifestApp.Views
             settings.WindowWidth = Width;
             settings.WindowHeight = Height;
             _settingsService.SaveSettings(settings);
+
+            // Check if we should minimize to tray instead of closing
+            if (settings.MinimizeToTray)
+            {
+                e.Cancel = true;
+                var app = Application.Current as App;
+                var trayService = app?.GetTrayIconService();
+                trayService?.ShowInTray();
+            }
         }
 
         private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -69,7 +78,18 @@ namespace SolusManifestApp.Views
 
         private void CloseButton_Click(object sender, RoutedEventArgs e)
         {
-            Close();
+            // Check if we should minimize to tray instead of closing
+            var settings = _settingsService.LoadSettings();
+            if (settings.MinimizeToTray)
+            {
+                var app = Application.Current as App;
+                var trayService = app?.GetTrayIconService();
+                trayService?.ShowInTray();
+            }
+            else
+            {
+                Close();
+            }
         }
     }
 }
