@@ -2,6 +2,7 @@ using Newtonsoft.Json;
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
 using System.Reflection;
@@ -99,44 +100,75 @@ namespace SolusManifestApp.Services
         {
             try
             {
-                // Find the single-file exe (smallest file, likely the framework-dependent version)
-                var exeAsset = updateInfo.Assets
-                    .Where(a => a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-                    .OrderBy(a => a.Size)
-                    .FirstOrDefault();
+                // Find the win-x64 zip file
+                var zipAsset = updateInfo.Assets
+                    .FirstOrDefault(a => a.Name.EndsWith("-win-x64.zip", StringComparison.OrdinalIgnoreCase));
 
-                if (exeAsset == null)
+                if (zipAsset == null)
                 {
                     return null;
                 }
 
-                var tempPath = Path.Combine(Path.GetTempPath(), "SolusManifestApp_Update.exe");
+                var tempZipPath = Path.Combine(Path.GetTempPath(), "SolusManifestApp_Update.zip");
+                var tempExtractPath = Path.Combine(Path.GetTempPath(), "SolusManifestApp_Update_Extract");
 
-                using var response = await _httpClient.GetAsync(exeAsset.BrowserDownloadUrl, HttpCompletionOption.ResponseHeadersRead);
-                response.EnsureSuccessStatusCode();
-
-                var totalBytes = response.Content.Headers.ContentLength ?? 0;
-                var downloadedBytes = 0L;
-
-                using var fileStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None);
-                using var contentStream = await response.Content.ReadAsStreamAsync();
-
-                var buffer = new byte[8192];
-                int bytesRead;
-
-                while ((bytesRead = await contentStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                // Download ZIP
+                using (var response = await _httpClient.GetAsync(zipAsset.BrowserDownloadUrl, HttpCompletionOption.ResponseHeadersRead))
                 {
-                    await fileStream.WriteAsync(buffer, 0, bytesRead);
-                    downloadedBytes += bytesRead;
+                    response.EnsureSuccessStatusCode();
 
-                    if (totalBytes > 0 && progress != null)
+                    var totalBytes = response.Content.Headers.ContentLength ?? 0;
+                    var downloadedBytes = 0L;
+
+                    using var fileStream = new FileStream(tempZipPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                    using var contentStream = await response.Content.ReadAsStreamAsync();
+
+                    var buffer = new byte[8192];
+                    int bytesRead;
+
+                    while ((bytesRead = await contentStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
                     {
-                        var progressPercent = (double)downloadedBytes / totalBytes * 100;
-                        progress.Report(progressPercent);
+                        await fileStream.WriteAsync(buffer, 0, bytesRead);
+                        downloadedBytes += bytesRead;
+
+                        if (totalBytes > 0 && progress != null)
+                        {
+                            var progressPercent = (double)downloadedBytes / totalBytes * 100;
+                            progress.Report(progressPercent);
+                        }
                     }
                 }
 
-                return tempPath;
+                // Extract ZIP
+                if (Directory.Exists(tempExtractPath))
+                {
+                    Directory.Delete(tempExtractPath, true);
+                }
+                Directory.CreateDirectory(tempExtractPath);
+
+                System.IO.Compression.ZipFile.ExtractToDirectory(tempZipPath, tempExtractPath);
+
+                // Find the exe in extracted files
+                var exePath = Directory.GetFiles(tempExtractPath, "SolusManifestApp.exe", SearchOption.AllDirectories).FirstOrDefault();
+
+                if (string.IsNullOrEmpty(exePath))
+                {
+                    return null;
+                }
+
+                // Move exe to final temp location
+                var finalExePath = Path.Combine(Path.GetTempPath(), "SolusManifestApp_Update.exe");
+                if (File.Exists(finalExePath))
+                {
+                    File.Delete(finalExePath);
+                }
+                File.Move(exePath, finalExePath);
+
+                // Cleanup
+                File.Delete(tempZipPath);
+                Directory.Delete(tempExtractPath, true);
+
+                return finalExePath;
             }
             catch
             {
