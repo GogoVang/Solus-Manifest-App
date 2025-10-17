@@ -23,6 +23,7 @@ namespace SolusManifestApp.ViewModels
         private readonly SteamApiService _steamApiService;
         private readonly NotificationService _notificationService;
         private readonly LibraryRefreshService _libraryRefreshService;
+        private readonly LoggerService _logger;
 
         [ObservableProperty]
         private ObservableCollection<DownloadItem> _activeDownloads;
@@ -54,6 +55,7 @@ namespace SolusManifestApp.ViewModels
             _steamApiService = steamApiService;
             _notificationService = notificationService;
             _libraryRefreshService = libraryRefreshService;
+            _logger = new LoggerService();
 
             ActiveDownloads = _downloadService.ActiveDownloads;
 
@@ -135,16 +137,24 @@ namespace SolusManifestApp.ViewModels
                 // Handle DepotDownloader mode
                 if (settings.Mode == ToolMode.DepotDownloader)
                 {
+                    _logger.Info("=== Starting DepotDownloader Info Gathering Phase ===");
+                    _logger.Info($"App ID: {appId}");
+                    _logger.Info($"Zip file: {fileName}");
+
                     // DepotDownloader flow: extract depot keys, filter by language, and start download
                     StatusMessage = "Extracting depot information from lua file...";
+                    _logger.Info("Step 1: Extracting lua content from zip file...");
                     var luaContent = _downloadService.ExtractLuaContentFromZip(filePath, appId);
+                    _logger.Info($"Lua content extracted successfully ({luaContent.Length} characters)");
 
                     // Parse depot keys from lua content
+                    _logger.Info("Step 2: Parsing depot keys from lua content...");
                     var depotFilterService = new DepotFilterService(new LoggerService());
                     var parsedDepotKeys = depotFilterService.ExtractDepotKeysFromLua(luaContent);
 
                     if (parsedDepotKeys.Count == 0)
                     {
+                        _logger.Error("No depot keys found in lua file!");
                         MessageBoxHelper.Show(
                             "No depot keys found in the lua file. Cannot proceed with download.",
                             "Error",
@@ -155,14 +165,22 @@ namespace SolusManifestApp.ViewModels
                         return;
                     }
 
+                    _logger.Info($"Found {parsedDepotKeys.Count} depot keys:");
+                    foreach (var kvp in parsedDepotKeys)
+                    {
+                        _logger.Info($"  Depot {kvp.Key}: {kvp.Value}");
+                    }
+
                     StatusMessage = $"Found {parsedDepotKeys.Count} depot keys. Fetching depot metadata...";
 
                     // Fetch depot metadata from SteamCMD API
+                    _logger.Info("Step 3: Fetching depot metadata from SteamCMD API...");
                     var steamCmdService = new SteamCmdApiService();
                     var steamCmdData = await steamCmdService.GetDepotInfoAsync(appId);
 
                     if (steamCmdData == null)
                     {
+                        _logger.Error("Failed to fetch depot information from SteamCMD API!");
                         MessageBoxHelper.Show(
                             "Failed to fetch depot information from SteamCMD API. Cannot proceed with download.",
                             "Error",
@@ -173,29 +191,45 @@ namespace SolusManifestApp.ViewModels
                         return;
                     }
 
+                    _logger.Info("SteamCMD API data fetched successfully");
+                    if (steamCmdData.Data != null && steamCmdData.Data.ContainsKey(appId))
+                    {
+                        var appData = steamCmdData.Data[appId];
+                        _logger.Info($"App Name: {appData.Common?.Name ?? "Unknown"}");
+                        _logger.Info($"Total Depots in API data: {appData.Depots?.Count ?? 0}");
+                    }
+
                     // Get available languages
+                    _logger.Info("Step 4: Getting available languages from SteamCMD data...");
                     var availableLanguages = depotFilterService.GetAvailableLanguages(steamCmdData, appId);
+                    _logger.Info($"Available languages: {string.Join(", ", availableLanguages)}");
 
                     if (availableLanguages.Count == 0)
                     {
+                        _logger.Warning("No languages found in depot metadata. Using 'all' as fallback.");
                         _notificationService.ShowWarning("No languages found in depot metadata. Using all depots.");
                         availableLanguages = new List<string> { "all" };
                     }
 
                     // Show language selection dialog
                     StatusMessage = "Waiting for language selection...";
+                    _logger.Info("Step 5: Showing language selection dialog to user...");
                     var languageDialog = new LanguageSelectionDialog(availableLanguages);
                     var languageResult = languageDialog.ShowDialog();
 
                     if (languageResult != true || string.IsNullOrEmpty(languageDialog.SelectedLanguage))
                     {
+                        _logger.Info("User cancelled language selection");
                         StatusMessage = "Installation cancelled";
                         IsInstalling = false;
                         return;
                     }
 
+                    _logger.Info($"User selected language: {languageDialog.SelectedLanguage}");
+
                     // Filter depots using Python-style logic
                     StatusMessage = $"Filtering depots for language: {languageDialog.SelectedLanguage}...";
+                    _logger.Info($"Step 6: Filtering depots for language '{languageDialog.SelectedLanguage}' using Python-style logic...");
                     var filteredDepotIds = depotFilterService.GetDepotsForLanguage(
                         steamCmdData,
                         parsedDepotKeys,
@@ -204,6 +238,7 @@ namespace SolusManifestApp.ViewModels
 
                     if (filteredDepotIds.Count == 0)
                     {
+                        _logger.Error("No depots matched the selected language!");
                         MessageBoxHelper.Show(
                             "No depots matched the selected language. Cannot proceed with download.",
                             "Error",
@@ -214,9 +249,11 @@ namespace SolusManifestApp.ViewModels
                         return;
                     }
 
+                    _logger.Info($"Filtered depot list contains {filteredDepotIds.Count} depots: {string.Join(", ", filteredDepotIds)}");
                     StatusMessage = $"Found {filteredDepotIds.Count} depots for {languageDialog.SelectedLanguage}. Preparing depot selection...";
 
                     // Convert filtered depot IDs to depot info list for selection dialog
+                    _logger.Info("Step 7: Converting filtered depot IDs to depot info for selection dialog...");
                     var depotsForSelection = new List<DepotInfo>();
                     foreach (var depotIdStr in filteredDepotIds)
                     {
@@ -232,6 +269,8 @@ namespace SolusManifestApp.ViewModels
                                 depotLanguage = depotData.Config?.Language ?? "";
                             }
 
+                            _logger.Debug($"  Added depot {depotId} - Language: {(string.IsNullOrEmpty(depotLanguage) ? "none (base depot)" : depotLanguage)}");
+
                             depotsForSelection.Add(new DepotInfo
                             {
                                 DepotId = depotIdStr,
@@ -244,20 +283,25 @@ namespace SolusManifestApp.ViewModels
 
                     // Show depot selection dialog
                     StatusMessage = "Waiting for depot selection...";
+                    _logger.Info($"Step 8: Showing depot selection dialog ({depotsForSelection.Count} depots)...");
                     var depotDialog = new DepotSelectionDialog(depotsForSelection);
                     var depotResult = depotDialog.ShowDialog();
 
                     if (depotResult != true || depotDialog.SelectedDepotIds.Count == 0)
                     {
+                        _logger.Info("User cancelled depot selection");
                         StatusMessage = "Installation cancelled";
                         IsInstalling = false;
                         return;
                     }
 
+                    _logger.Info($"User selected {depotDialog.SelectedDepotIds.Count} depots: {string.Join(", ", depotDialog.SelectedDepotIds)}");
+
                     // Prepare download path
                     var outputPath = settings.DepotDownloaderOutputPath;
                     if (string.IsNullOrEmpty(outputPath))
                     {
+                        _logger.Error("DepotDownloader output path not configured!");
                         MessageBoxHelper.Show(
                             "DepotDownloader output path not configured. Please set it in Settings.",
                             "Error",
@@ -268,11 +312,16 @@ namespace SolusManifestApp.ViewModels
                         return;
                     }
 
+                    _logger.Info($"Output path: {outputPath}");
+
                     // Extract manifest files from zip
                     StatusMessage = "Extracting manifest files...";
+                    _logger.Info("Step 9: Extracting manifest files from zip...");
                     var manifestFiles = _downloadService.ExtractManifestFilesFromZip(filePath, appId);
+                    _logger.Info($"Extracted {manifestFiles.Count} manifest files");
 
                     // Prepare depot list with keys and manifest files
+                    _logger.Info("Step 10: Preparing depot download list with keys and manifest files...");
                     var depotsToDownload = new List<(uint depotId, string depotKey, string? manifestFile)>();
                     foreach (var selectedDepotId in depotDialog.SelectedDepotIds)
                     {
@@ -283,6 +332,11 @@ namespace SolusManifestApp.ViewModels
                             if (manifestFiles.TryGetValue(selectedDepotId, out var manifestPath))
                             {
                                 manifestFilePath = manifestPath;
+                                _logger.Info($"  Depot {depotId}: Using manifest file {Path.GetFileName(manifestPath)}");
+                            }
+                            else
+                            {
+                                _logger.Info($"  Depot {depotId}: No manifest file (will download latest)");
                             }
 
                             depotsToDownload.Add((depotId, depotKey, manifestFilePath));
@@ -295,9 +349,17 @@ namespace SolusManifestApp.ViewModels
                     {
                         gameName = gameData.Common?.Name ?? appId;
                     }
+                    _logger.Info($"Game name: {gameName}");
 
                     // Start download via DownloadService (shows in Downloads tab with progress)
                     StatusMessage = "Starting download...";
+                    _logger.Info("=== Info Gathering Phase Complete ===");
+                    _logger.Info($"Step 11: Starting download for {depotsToDownload.Count} depots...");
+                    _logger.Info($"  App ID: {appId}");
+                    _logger.Info($"  Game Name: {gameName}");
+                    _logger.Info($"  Output Path: {outputPath}");
+                    _logger.Info($"  Verify Files: {settings.VerifyFilesAfterDownload}");
+                    _logger.Info($"  Max Concurrent Downloads: {settings.MaxConcurrentDownloads}");
 
                     // Start the download asynchronously
                     _ = _downloadService.DownloadViaDepotDownloaderAsync(
@@ -311,11 +373,13 @@ namespace SolusManifestApp.ViewModels
 
                     var gameFolderName = $"{gameName} ({appId})";
                     var gameDownloadPath = Path.Combine(outputPath, gameFolderName, gameName);
+                    _logger.Info($"Download initiated successfully. Files will be downloaded to: {gameDownloadPath}");
                     _notificationService.ShowSuccess($"Download started for {gameName}!\n\nCheck the Downloads tab to monitor progress.\nFiles will be downloaded to: {gameDownloadPath}", "Download Started");
 
                     StatusMessage = "Download started - check progress below";
 
                     // Auto-delete the ZIP file after starting download
+                    _logger.Info($"Deleting zip file: {fileName}");
                     File.Delete(filePath);
                     RefreshDownloadedFiles();
 
