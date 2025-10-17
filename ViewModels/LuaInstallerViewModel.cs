@@ -280,7 +280,7 @@ namespace SolusManifestApp.ViewModels
                     }
                     else if (settings.Mode == ToolMode.DepotDownloader)
                     {
-                        // DepotDownloader flow: extract depot keys, filter by language, and download
+                        // DepotDownloader flow: extract depot keys, filter by language, and start download in Downloads tab
                         StatusMessage = "Extracting depot information from lua file...";
                         var luaContent = _downloadService.ExtractLuaContentFromZip(SelectedFilePath, appId);
 
@@ -398,46 +398,6 @@ namespace SolusManifestApp.ViewModels
                             return;
                         }
 
-                        var downloadPath = Path.Combine(outputPath, appId);
-                        Directory.CreateDirectory(downloadPath);
-
-                        // Initialize DepotDownloader wrapper service
-                        StatusMessage = "Initializing Steam session...";
-                        var depotDownloaderService = DepotDownloaderWrapperService.Instance;
-
-                        // Subscribe to events
-                        var cancellationTokenSource = new CancellationTokenSource();
-
-                        depotDownloaderService.ProgressChanged += (sender, e) =>
-                        {
-                            var progressPercent = (int)(e.Progress * 100);
-                            StatusMessage = $"Downloading: {e.CurrentFile} ({progressPercent}% - {e.ProcessedFiles}/{e.TotalFiles} files)";
-                        };
-
-                        depotDownloaderService.StatusChanged += (sender, e) =>
-                        {
-                            StatusMessage = e.Message;
-                        };
-
-                        depotDownloaderService.LogMessage += (sender, e) =>
-                        {
-                            _logger.Info(e.Message);
-                        };
-
-                        // Initialize Steam session (anonymous login)
-                        var initialized = await depotDownloaderService.InitializeAsync(
-                            settings.SteamUsername,
-                            "" // No password support yet
-                        );
-
-                        if (!initialized)
-                        {
-                            _notificationService.ShowError("Failed to initialize Steam session. Cannot proceed with download.");
-                            StatusMessage = "Installation failed - Steam session initialization failed";
-                            IsInstalling = false;
-                            return;
-                        }
-
                         // Prepare depot list with keys
                         var depotsToDownload = new List<(uint depotId, string depotKey, string? manifestFile)>();
                         foreach (var selectedDepotId in depotDialog.SelectedDepotIds)
@@ -448,28 +408,28 @@ namespace SolusManifestApp.ViewModels
                             }
                         }
 
-                        // Start download
-                        StatusMessage = $"Downloading {depotsToDownload.Count} depots to {downloadPath}...";
+                        // Get game name from SteamCMD data
+                        string gameName = appId;
+                        if (steamCmdData.Data.TryGetValue(appId, out var gameData))
+                        {
+                            gameName = gameData.Common?.Name ?? appId;
+                        }
 
-                        var downloadSuccess = await depotDownloaderService.DownloadDepotsAsync(
-                            uint.Parse(appId),
+                        // Start download via DownloadService (shows in Downloads tab with progress)
+                        StatusMessage = "Starting download in Downloads tab...";
+
+                        // Start the download asynchronously - it will appear in Downloads tab
+                        _ = _downloadService.DownloadViaDepotDownloaderAsync(
+                            appId,
+                            gameName,
                             depotsToDownload,
-                            downloadPath,
+                            outputPath,
                             settings.VerifyFilesAfterDownload,
-                            settings.MaxConcurrentDownloads,
-                            cancellationTokenSource.Token
+                            settings.MaxConcurrentDownloads
                         );
 
-                        if (downloadSuccess)
-                        {
-                            _notificationService.ShowSuccess($"Download completed successfully!\n\nFiles downloaded to: {downloadPath}");
-                            StatusMessage = "Download complete!";
-                        }
-                        else
-                        {
-                            _notificationService.ShowError("Download failed. Check logs for details.");
-                            StatusMessage = "Download failed";
-                        }
+                        _notificationService.ShowSuccess($"Download started for {gameName}!\n\nCheck the Downloads tab to monitor progress.\nFiles will be downloaded to: {Path.Combine(outputPath, appId)}");
+                        StatusMessage = "Download started - check Downloads tab";
 
                         // Clear selection
                         SelectedFilePath = string.Empty;

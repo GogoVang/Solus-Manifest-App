@@ -692,5 +692,157 @@ namespace SolusManifestApp.Services
             using var reader = new StreamReader(stream);
             return reader.ReadToEnd();
         }
+
+        public async Task<bool> DownloadViaDepotDownloaderAsync(
+            string appId,
+            string gameName,
+            List<(uint depotId, string depotKey, string? manifestFile)> depots,
+            string outputPath,
+            bool verifyFiles = true,
+            int maxDownloads = 8)
+        {
+            var downloadItem = new DownloadItem
+            {
+                AppId = appId,
+                GameName = gameName,
+                Status = DownloadStatus.Downloading,
+                StartTime = DateTime.Now,
+                StatusMessage = "Initializing Steam session...",
+                DestinationPath = Path.Combine(outputPath, appId)
+            };
+
+            var cancellationTokenSource = new CancellationTokenSource();
+            _downloadCancellations[downloadItem.Id] = cancellationTokenSource;
+
+            lock (_collectionLock)
+            {
+                ActiveDownloads.Add(downloadItem);
+            }
+
+            try
+            {
+                Directory.CreateDirectory(downloadItem.DestinationPath);
+
+                var depotDownloaderService = DepotDownloaderWrapperService.Instance;
+
+                // Subscribe to events
+                EventHandler<DownloadProgressEventArgs>? progressHandler = null;
+                EventHandler<DownloadStatusEventArgs>? statusHandler = null;
+                EventHandler<LogMessageEventArgs>? logHandler = null;
+
+                progressHandler = (sender, e) =>
+                {
+                    App.Current.Dispatcher.BeginInvoke(() =>
+                    {
+                        downloadItem.Progress = e.Progress;
+                        downloadItem.DownloadedBytes = e.DownloadedBytes;
+                        downloadItem.TotalBytes = e.TotalBytes;
+                        var progressPercent = (int)(e.Progress * 100);
+                        downloadItem.StatusMessage = $"Downloading: {e.CurrentFile} ({progressPercent}% - {e.ProcessedFiles}/{e.TotalFiles} files)";
+                    });
+                };
+
+                statusHandler = (sender, e) =>
+                {
+                    App.Current.Dispatcher.BeginInvoke(() =>
+                    {
+                        downloadItem.StatusMessage = e.Message;
+                    });
+                };
+
+                logHandler = (sender, e) =>
+                {
+                    Console.WriteLine($"[DepotDownloader] {e.Message}");
+                };
+
+                depotDownloaderService.ProgressChanged += progressHandler;
+                depotDownloaderService.StatusChanged += statusHandler;
+                depotDownloaderService.LogMessage += logHandler;
+
+                try
+                {
+                    // Always use anonymous login
+                    App.Current.Dispatcher.BeginInvoke(() =>
+                    {
+                        downloadItem.StatusMessage = "Connecting to Steam (anonymous)...";
+                    });
+
+                    var initialized = await depotDownloaderService.InitializeAsync("", "");
+
+                    if (!initialized)
+                    {
+                        throw new Exception("Failed to initialize Steam session");
+                    }
+
+                    App.Current.Dispatcher.BeginInvoke(() =>
+                    {
+                        downloadItem.StatusMessage = $"Downloading {depots.Count} depots...";
+                    });
+
+                    var success = await depotDownloaderService.DownloadDepotsAsync(
+                        uint.Parse(appId),
+                        depots,
+                        downloadItem.DestinationPath,
+                        verifyFiles,
+                        maxDownloads,
+                        cancellationTokenSource.Token
+                    );
+
+                    if (success)
+                    {
+                        App.Current.Dispatcher.BeginInvoke(() =>
+                        {
+                            downloadItem.Status = DownloadStatus.Completed;
+                            downloadItem.Progress = 100;
+                            downloadItem.StatusMessage = "Download completed successfully";
+                            downloadItem.EndTime = DateTime.Now;
+
+                            lock (_collectionLock)
+                            {
+                                ActiveDownloads.Remove(downloadItem);
+                                CompletedDownloads.Add(downloadItem);
+                            }
+
+                            DownloadCompleted?.Invoke(this, downloadItem);
+                        });
+
+                        return true;
+                    }
+                    else
+                    {
+                        throw new Exception("Download failed");
+                    }
+                }
+                finally
+                {
+                    depotDownloaderService.ProgressChanged -= progressHandler;
+                    depotDownloaderService.StatusChanged -= statusHandler;
+                    depotDownloaderService.LogMessage -= logHandler;
+                }
+            }
+            catch (Exception ex)
+            {
+                App.Current.Dispatcher.BeginInvoke(() =>
+                {
+                    downloadItem.Status = DownloadStatus.Failed;
+                    downloadItem.StatusMessage = $"Failed: {ex.Message}";
+                    downloadItem.EndTime = DateTime.Now;
+
+                    lock (_collectionLock)
+                    {
+                        ActiveDownloads.Remove(downloadItem);
+                        FailedDownloads.Add(downloadItem);
+                    }
+
+                    DownloadFailed?.Invoke(this, downloadItem);
+                });
+
+                return false;
+            }
+            finally
+            {
+                _downloadCancellations.Remove(downloadItem.Id);
+            }
+        }
     }
 }
