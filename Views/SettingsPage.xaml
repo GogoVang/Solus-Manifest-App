@@ -383,9 +383,25 @@
             <!-- Advanced Tools Tab with Sub-Tabs -->
             <TabItem Header="Advanced Tools">
                 <TabControl Background="Transparent" BorderThickness="0" Margin="10">
+                    <TabControl.Resources>
+                        <Style x:Key="GreenLumaTabStyle" TargetType="TabItem" BasedOn="{StaticResource {x:Type TabItem}}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsGreenLumaMode}" Value="False">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                        <Style x:Key="DepotDownloaderTabStyle" TargetType="TabItem" BasedOn="{StaticResource {x:Type TabItem}}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsDepotDownloaderMode}" Value="False">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TabControl.Resources>
 
                     <!-- GreenLuma Sub-Tab -->
-                    <TabItem Header="GreenLuma" Visibility="{Binding IsGreenLumaMode, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <TabItem Header="GreenLuma" Style="{StaticResource GreenLumaTabStyle}">
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <StackPanel MaxWidth="800" HorizontalAlignment="Left" Margin="0,20,0,0">
 
@@ -713,7 +729,7 @@
             </TabItem>
 
             <!-- DepotDownloader Tab -->
-            <TabItem Header="DepotDownloader" Visibility="{Binding IsDepotDownloaderMode, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <TabItem Header="DepotDownloader" Style="{StaticResource DepotDownloaderTabStyle}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel MaxWidth="800" HorizontalAlignment="Left" Margin="0,20,0,0">
 

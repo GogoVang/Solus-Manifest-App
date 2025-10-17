@@ -51,7 +51,15 @@
       "Read(//c/Morrenus Stuff/SteamAuthPro/SteamAuthPro/**)",
       "Bash(start test-protocol.html)",
       "Bash(dotnet add package:*)",
-      "Bash(start \"\" \"bin\\Debug\\net8.0-windows10.0.19041.0\\SolusManifestApp.exe\")"
+      "Bash(start \"\" \"bin\\Debug\\net8.0-windows10.0.19041.0\\SolusManifestApp.exe\")",
+      "Read(//c/Morrenus Stuff/DepotDownloaderMod2.0gui/DepotDownloaderGUI/**)",
+      "Read(//c/Morrenus Stuff/DepotDownloaderMod2.0gui/DepotDownloader/**)",
+      "Read(//c/Morrenus Stuff/DepotDownloaderMod2.0gui/**)",
+      "Read(//c/Users/Morrenus/Desktop/RollerCoaster Tycoon Deluxe (285310)/**)",
+      "Read(//c/Users/Morrenus/Desktop/RollerCoaster Tycoon Deluxe (285310)/RollerCoaster Tycoon Deluxe Manifests and Keys/**)",
+      "Read(//c/Users/Morrenus/Desktop/**)",
+      "Read(//c/Users/Morrenus/AppData/Roaming/SolusManifestApp/**)",
+      "Bash(start \"\" \"bin/Debug/net8.0-windows10.0.19041.0/SolusManifestApp.exe\")"
     ],
     "deny": [],
     "ask": []
