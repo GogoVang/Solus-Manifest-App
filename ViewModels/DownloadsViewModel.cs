@@ -173,25 +173,26 @@ namespace SolusManifestApp.ViewModels
 
                     StatusMessage = $"Found {parsedDepotKeys.Count} depot keys. Fetching depot metadata...";
 
-                    // Fetch depot metadata from SteamCMD API
-                    _logger.Info("Step 3: Fetching depot metadata from SteamCMD API...");
-                    var steamCmdService = new SteamCmdApiService();
-                    var steamCmdData = await steamCmdService.GetDepotInfoAsync(appId);
+                    // Fetch depot metadata directly from Steam using SteamKit2
+                    _logger.Info("Step 3: Fetching depot metadata directly from Steam...");
+                    var steamKitService = new SteamKitAppInfoService();
+                    await steamKitService.InitializeAsync();
+                    var steamCmdData = await steamKitService.GetDepotInfoAsync(appId);
 
                     if (steamCmdData == null)
                     {
-                        _logger.Error("Failed to fetch depot information from SteamCMD API!");
+                        _logger.Error("Failed to fetch depot information from Steam!");
                         MessageBoxHelper.Show(
-                            "Failed to fetch depot information from SteamCMD API. Cannot proceed with download.",
+                            "Failed to fetch depot information from Steam. Cannot proceed with download.",
                             "Error",
                             MessageBoxButton.OK,
                             MessageBoxImage.Error);
-                        StatusMessage = "Installation cancelled - API fetch failed";
+                        StatusMessage = "Installation cancelled - Steam fetch failed";
                         IsInstalling = false;
                         return;
                     }
 
-                    _logger.Info("SteamCMD API data fetched successfully");
+                    _logger.Info("Steam depot data fetched successfully");
                     if (steamCmdData.Data != null && steamCmdData.Data.ContainsKey(appId))
                     {
                         var appData = steamCmdData.Data[appId];

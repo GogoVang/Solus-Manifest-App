@@ -298,14 +298,15 @@ namespace SolusManifestApp.ViewModels
 
                         StatusMessage = $"Found {parsedDepotKeys.Count} depot keys. Fetching depot metadata...";
 
-                        // Fetch depot metadata from SteamCMD API
-                        var steamCmdService = new SteamCmdApiService();
-                        var steamCmdData = await steamCmdService.GetDepotInfoAsync(appId);
+                        // Fetch depot metadata directly from Steam using SteamKit2
+                        var steamKitService = new SteamKitAppInfoService();
+                        await steamKitService.InitializeAsync();
+                        var steamCmdData = await steamKitService.GetDepotInfoAsync(appId);
 
                         if (steamCmdData == null)
                         {
-                            _notificationService.ShowError("Failed to fetch depot information from SteamCMD API. Cannot proceed with download.");
-                            StatusMessage = "Installation cancelled - API fetch failed";
+                            _notificationService.ShowError("Failed to fetch depot information from Steam. Cannot proceed with download.");
+                            StatusMessage = "Installation cancelled - Steam fetch failed";
                             IsInstalling = false;
                             return;
                         }
