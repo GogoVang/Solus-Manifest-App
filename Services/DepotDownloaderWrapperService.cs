@@ -160,14 +160,21 @@ namespace SolusManifestApp.Services
                 // Set cancellation token
                 ContentDownloader.ExternalCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
+                // Track depot progress
+                int totalDepots = depots.Count;
+                int currentDepotIndex = 0;
+
                 // Subscribe to progress events
                 EventHandler<DepotDownloader.DownloadProgressEventArgs>? progressHandler = null;
                 progressHandler = (sender, e) =>
                 {
+                    // Calculate overall progress: (completed depots + current depot progress) / total depots
+                    double overallProgress = ((currentDepotIndex + (e.Progress / 100.0)) / totalDepots) * 100.0;
+
                     ProgressChanged?.Invoke(this, new DownloadProgressEventArgs
                     {
                         JobId = appId.ToString(),
-                        Progress = e.Progress,
+                        Progress = overallProgress,
                         DownloadedBytes = (long)e.DownloadedBytes,
                         TotalBytes = (long)e.TotalBytes,
                         ProcessedFiles = e.ProcessedFiles,
@@ -193,7 +200,7 @@ namespace SolusManifestApp.Services
                     // Download each depot
                     foreach (var (depotId, depotKey, manifestFile) in depots)
                     {
-                        LogInfo($"Starting depot {depotId} download...");
+                        LogInfo($"Starting depot {depotId} download ({currentDepotIndex + 1}/{totalDepots})...");
 
                         var depotList = new List<(uint depotId, ulong manifestId)>
                         {
@@ -221,6 +228,10 @@ namespace SolusManifestApp.Services
                         // Reset manifest file config
                         ContentDownloader.Config.UseManifestFile = false;
                         ContentDownloader.Config.ManifestFile = null;
+
+                        // Increment depot index for next depot
+                        currentDepotIndex++;
+                        LogInfo($"Completed depot {depotId} ({currentDepotIndex}/{totalDepots})");
                     }
 
                     LogInfo($"Download completed for App ID: {appId}");
