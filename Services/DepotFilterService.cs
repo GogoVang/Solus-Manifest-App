@@ -197,22 +197,25 @@ namespace SolusManifestApp.Services
                     }
 
                     // Language filtering (Python lines 390-400)
+                    // Assume English if no language specified
                     var depotLanguage = config.Language ?? "";
 
                     if (language.ToLower() == "english")
                     {
-                        if (string.IsNullOrEmpty(depotLanguage))
+                        // For English: include depots with no language OR explicitly marked as english
+                        if (string.IsNullOrEmpty(depotLanguage) || depotLanguage.ToLower() == "english")
                         {
                             baseDepots.Add(depotId);
-                            _logger.Debug($"Added main depot {depotId} for English (no language)");
+                            _logger.Debug($"Added main depot {depotId} for English (language: {(string.IsNullOrEmpty(depotLanguage) ? "none/assumed english" : depotLanguage)})");
                         }
                     }
                     else
                     {
-                        if (string.IsNullOrEmpty(depotLanguage))
+                        // For other languages: include base depots (no language/english) + language-specific depots
+                        if (string.IsNullOrEmpty(depotLanguage) || depotLanguage.ToLower() == "english")
                         {
                             baseDepots.Add(depotId);
-                            _logger.Debug($"Added base depot {depotId} (no language)");
+                            _logger.Debug($"Added base depot {depotId} (no language/english assumed)");
                         }
                         else if (depotLanguage.ToLower() == language.ToLower())
                         {
@@ -293,15 +296,28 @@ namespace SolusManifestApp.Services
 
                     var depotLanguage = config.Language ?? "";
 
-                    if (string.IsNullOrEmpty(depotLanguage))
+                    if (language.ToLower() == "english")
                     {
-                        baseDepots.Add(depotId);
-                        _logger.Debug($"Added DLC depot {depotId} (no language)");
+                        // For English: include depots with no language OR explicitly marked as english
+                        if (string.IsNullOrEmpty(depotLanguage) || depotLanguage.ToLower() == "english")
+                        {
+                            baseDepots.Add(depotId);
+                            _logger.Debug($"Added DLC depot {depotId} for English (language: {(string.IsNullOrEmpty(depotLanguage) ? "none/assumed english" : depotLanguage)})");
+                        }
                     }
-                    else if (depotLanguage.ToLower() == language.ToLower())
+                    else
                     {
-                        languageDepots.Add(depotId);
-                        _logger.Debug($"Added DLC language depot {depotId} for {language}");
+                        // For other languages: include base depots (no language/english) + language-specific depots
+                        if (string.IsNullOrEmpty(depotLanguage) || depotLanguage.ToLower() == "english")
+                        {
+                            baseDepots.Add(depotId);
+                            _logger.Debug($"Added DLC base depot {depotId} (no language/english assumed)");
+                        }
+                        else if (depotLanguage.ToLower() == language.ToLower())
+                        {
+                            languageDepots.Add(depotId);
+                            _logger.Debug($"Added DLC language depot {depotId} for {language}");
+                        }
                     }
                 }
                 else
