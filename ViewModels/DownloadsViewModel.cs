@@ -585,13 +585,22 @@ namespace SolusManifestApp.ViewModels
                             return;
                         }
 
-                        // Generate AppList with optional main appid + selected depot IDs
+                        // Generate AppList with optional main appid + DLC parent appids + selected depot IDs
                         StatusMessage = $"Generating AppList for selected depots...";
                         var appListIds = new List<string>();
                         if (includeMainAppId)
                         {
                             appListIds.Add(appId);
                         }
+
+                        // Add DLC parent AppIds when they differ from depot ID and main AppId
+                        var dlcParentAppIds = selectedDepotInfo?
+                            .Where(d => !string.IsNullOrEmpty(d.DlcAppId) && d.DlcAppId != d.DepotId && d.DlcAppId != appId)
+                            .Select(d => d.DlcAppId!)
+                            .Distinct()
+                            .ToList() ?? new List<string>();
+                        appListIds.AddRange(dlcParentAppIds);
+
                         appListIds.AddRange(selectedDepotIds);
 
                         // Reuse customPath from earlier check
